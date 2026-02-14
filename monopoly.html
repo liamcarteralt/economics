@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monopoly</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #f5f5f5;
+    --card: #ffffff;
+    --card-border: #e8e8e8;
+    --card-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    --text: #2c2c2c;
+    --text-dim: #888;
+    --text-label: #555;
+    --demand: #c62828;
+    --mr: #e65100;
+    --mc: #2e7d32;
+    --atc: #6a1b9a;
+    --cs-color: #4285f4;
+    --ps-color: #34a853;
+    --dwl-color: #ea4335;
+    --profit-color: #f9a825;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', sans-serif; }
+
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  .header { padding: 16px 28px 10px; font-size: 22px; font-weight: 700; flex-shrink: 0; }
+
+  .main { display: flex; flex: 1; gap: 20px; padding: 0 24px 12px; overflow: hidden; }
+
+  .graph-wrap {
+    flex: 1; background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 12px; box-shadow: var(--card-shadow);
+    position: relative; overflow: hidden; display: flex; flex-direction: column;
+  }
+
+  canvas { display: block; width: 100%; flex: 1; }
+
+  .tooltip {
+    position: absolute; pointer-events: none;
+    background: rgba(255,255,255,0.97); border: 1px solid var(--card-border);
+    border-radius: 8px; padding: 8px 14px;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    opacity: 0; transition: opacity 0.15s ease;
+    z-index: 100; white-space: nowrap; line-height: 1.7;
+  }
+  .tooltip.visible { opacity: 1; }
+  .tooltip .label { color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+
+  .sidebar {
+    width: 290px; min-width: 260px;
+    display: flex; flex-direction: column; gap: 16px;
+    overflow-y: auto; flex-shrink: 0;
+  }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 12px; box-shadow: var(--card-shadow); padding: 20px;
+  }
+
+  .controls { display: flex; flex-direction: column; gap: 16px; }
+  .control-row { display: flex; flex-direction: column; gap: 5px; }
+  .control-header { display: flex; justify-content: space-between; align-items: center; }
+  .control-header .name { font-size: 13px; font-weight: 500; color: var(--text-label); }
+  .control-header .val { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; }
+
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 5px; border-radius: 3px; outline: none; cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.2); border: 2px solid #fff;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 18px; height: 18px; border-radius: 50%;
+    cursor: pointer; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  }
+
+  .slider-demand { background: linear-gradient(90deg, #ffcdd2, #c62828); }
+  .slider-demand::-webkit-slider-thumb { background: #c62828; }
+  .slider-demand::-moz-range-thumb { background: #c62828; }
+  .slider-mc { background: linear-gradient(90deg, #c8e6c9, #2e7d32); }
+  .slider-mc::-webkit-slider-thumb { background: #2e7d32; }
+  .slider-mc::-moz-range-thumb { background: #2e7d32; }
+  .slider-atc { background: linear-gradient(90deg, #e1bee7, #6a1b9a); }
+  .slider-atc::-webkit-slider-thumb { background: #6a1b9a; }
+  .slider-atc::-moz-range-thumb { background: #6a1b9a; }
+
+  .readouts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; text-align: center; }
+  .readout-item .ro-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
+  .readout-item .ro-value { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 700; margin-top: 2px; }
+
+  .divider { height: 1px; background: var(--card-border); margin: 10px 0; }
+
+  .footer {
+    flex-shrink: 0; padding: 10px 24px 16px;
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  }
+
+  .toggle-btn {
+    border: none; border-radius: 20px; padding: 7px 18px;
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s ease; user-select: none;
+  }
+  .toggle-btn.active { color: #fff; }
+  .toggle-btn:not(.active) { background: #e8e8e8; color: #666; }
+  .toggle-btn.cs.active { background: var(--cs-color); }
+  .toggle-btn.ps.active { background: var(--ps-color); }
+  .toggle-btn.dwl.active { background: var(--dwl-color); }
+  .toggle-btn.profit.active { background: var(--profit-color); color: #333; }
+  .toggle-btn.atc-btn.active { background: var(--atc); }
+  .toggle-btn.comp.active { background: #555; }
+
+  @media (max-width: 860px) {
+    .main { flex-direction: column; padding: 0 12px 8px; }
+    .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; overflow-y: visible; }
+    .sidebar .panel { flex: 1; min-width: 240px; }
+    .graph-wrap { min-height: 50vh; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">Monopoly</div>
+  <div class="main">
+    <div class="graph-wrap">
+      <canvas id="canvas"></canvas>
+      <div class="tooltip" id="tooltip"></div>
+    </div>
+    <div class="sidebar">
+      <div class="panel controls">
+        <div class="control-row">
+          <div class="control-header">
+            <span class="name">Demand Intercept</span>
+            <span class="val" style="color:#c62828" id="val-a">90</span>
+          </div>
+          <input type="range" class="slider-demand" id="slider-a" min="40" max="200" value="90" step="1">
+        </div>
+        <div class="control-row">
+          <div class="control-header">
+            <span class="name">Demand Slope</span>
+            <span class="val" style="color:#c62828" id="val-b">1</span>
+          </div>
+          <input type="range" class="slider-demand" id="slider-b" min="0.2" max="3" value="1" step="0.05">
+        </div>
+        <div class="control-row">
+          <div class="control-header">
+            <span class="name">MC Base</span>
+            <span class="val" style="color:#2e7d32" id="val-mc">10</span>
+          </div>
+          <input type="range" class="slider-mc" id="slider-mc" min="0" max="100" value="10" step="1">
+        </div>
+        <div class="control-row">
+          <div class="control-header">
+            <span class="name">MC Slope</span>
+            <span class="val" style="color:#2e7d32" id="val-mcs">0.5</span>
+          </div>
+          <input type="range" class="slider-mc" id="slider-mcs" min="0" max="3" value="0.5" step="0.05">
+        </div>
+        <div class="control-row">
+          <div class="control-header">
+            <span class="name">Fixed Cost</span>
+            <span class="val" style="color:#6a1b9a" id="val-fc">200</span>
+          </div>
+          <input type="range" class="slider-atc" id="slider-fc" min="0" max="1000" value="200" step="10">
+        </div>
+      </div>
+      <div class="panel">
+        <div class="readouts">
+          <div class="readout-item">
+            <div class="ro-label">Pm</div>
+            <div class="ro-value" style="color:var(--text)" id="ro-p">—</div>
+          </div>
+          <div class="readout-item">
+            <div class="ro-label">Qm</div>
+            <div class="ro-value" style="color:var(--text)" id="ro-q">—</div>
+          </div>
+          <div class="readout-item">
+            <div class="ro-label">Profit</div>
+            <div class="ro-value" style="color:var(--profit-color)" id="ro-profit">—</div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="readouts">
+          <div class="readout-item">
+            <div class="ro-label">CS</div>
+            <div class="ro-value" style="color:var(--cs-color)" id="ro-cs">—</div>
+          </div>
+          <div class="readout-item">
+            <div class="ro-label">PS</div>
+            <div class="ro-value" style="color:var(--ps-color)" id="ro-ps">—</div>
+          </div>
+          <div class="readout-item">
+            <div class="ro-label">DWL</div>
+            <div class="ro-value" style="color:var(--dwl-color)" id="ro-dwl">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    <button class="toggle-btn cs active" data-key="cs">Consumer Surplus</button>
+    <button class="toggle-btn ps active" data-key="ps">Producer Surplus</button>
+    <button class="toggle-btn dwl active" data-key="dwl">Deadweight Loss</button>
+    <button class="toggle-btn profit" data-key="profit">Profit</button>
+    <button class="toggle-btn atc-btn" data-key="atc">ATC</button>
+    <button class="toggle-btn comp" data-key="comp">Competitive</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const tooltipEl = document.getElementById('tooltip');
+
+const sl = {
+  a: document.getElementById('slider-a'),
+  b: document.getElementById('slider-b'),
+  mc: document.getElementById('slider-mc'),
+  mcs: document.getElementById('slider-mcs'),
+  fc: document.getElementById('slider-fc'),
+};
+const vl = {
+  a: document.getElementById('val-a'), b: document.getElementById('val-b'),
+  mc: document.getElementById('val-mc'), mcs: document.getElementById('val-mcs'),
+  fc: document.getElementById('val-fc'),
+};
+const ro = {
+  p: document.getElementById('ro-p'), q: document.getElementById('ro-q'),
+  profit: document.getElementById('ro-profit'), cs: document.getElementById('ro-cs'),
+  ps: document.getElementById('ro-ps'), dwl: document.getElementById('ro-dwl'),
+};
+
+const toggles = { cs: true, ps: true, dwl: true, profit: false, atc: false, comp: false };
+document.querySelectorAll('.toggle-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const k = btn.dataset.key;
+    toggles[k] = !toggles[k];
+    btn.classList.toggle('active', toggles[k]);
+  });
+});
+
+let params = { a: 90, b: 1, mc: 10, mcs: 0.5, fc: 200 };
+let target = { ...params };
+
+const FIXED_MAX_Q = 100;
+const FIXED_MAX_P = 100;
+
+const MARGIN = { top: 28, right: 34, bottom: 58, left: 62 };
+let W, H, plotW, plotH, dpr = 1;
+let mouseX = -1, mouseY = -1;
+
+function resize() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  W = rect.width; H = rect.height;
+  plotW = W - MARGIN.left - MARGIN.right;
+  plotH = H - MARGIN.top - MARGIN.bottom;
+}
+
+function qToX(q) { return MARGIN.left + (q / FIXED_MAX_Q) * plotW; }
+function pToY(p) { return MARGIN.top + (1 - p / FIXED_MAX_P) * plotH; }
+
+function compute() {
+  const { a, b, mc, mcs, fc } = params;
+
+  // Monopoly: MR = MC → a - 2bQ = mc + mcs*Q → Q* = (a - mc) / (2b + mcs)
+  const qm = Math.max(0, (a - mc) / (2 * b + mcs));
+  const pm = Math.max(0, a - b * qm);
+  const mcAtQ = mc + mcs * qm;
+
+  // Competitive: P = MC → a - bQ = mc + mcs*Q → Qc = (a - mc) / (b + mcs)
+  const qComp = Math.max(0, (a - mc) / (b + mcs));
+  const pComp = Math.max(0, a - b * qComp);
+  const mcAtComp = mc + mcs * qComp;
+
+  const tc = fc + mc * qm + mcs * qm * qm / 2;
+  const atcAtQ = qm > 0 ? tc / qm : Infinity;
+  const profit = pm * qm - tc;
+
+  const cs = qm > 0 ? 0.5 * (a - pm) * qm : 0;
+  const ps = qm > 0 ? (pm - mc) * qm - mcs * qm * qm / 2 : 0;
+  const dwl = qComp > qm ? 0.5 * (pm - mcAtQ) * (qComp - qm) : 0;
+
+  return { qm, pm, mcAtQ, qComp, pComp, mcAtComp, profit, cs, ps, dwl, atcAtQ };
+}
+
+/* ── Drawing helpers ── */
+
+function drawGrid() {
+  ctx.save();
+  const step = 20;
+  for (let q = step; q < FIXED_MAX_Q; q += step) {
+    ctx.strokeStyle = 'rgba(0,0,0,0.06)'; ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    ctx.moveTo(qToX(q) * dpr, MARGIN.top * dpr);
+    ctx.lineTo(qToX(q) * dpr, (H - MARGIN.bottom) * dpr);
+    ctx.stroke();
+  }
+  for (let p = step; p < FIXED_MAX_P; p += step) {
+    ctx.strokeStyle = 'rgba(0,0,0,0.06)'; ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    ctx.moveTo(MARGIN.left * dpr, pToY(p) * dpr);
+    ctx.lineTo((W - MARGIN.right) * dpr, pToY(p) * dpr);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1.8 * dpr;
+  ctx.beginPath();
+  ctx.moveTo(MARGIN.left * dpr, MARGIN.top * dpr);
+  ctx.lineTo(MARGIN.left * dpr, (H - MARGIN.bottom) * dpr);
+  ctx.lineTo((W - MARGIN.right) * dpr, (H - MARGIN.bottom) * dpr);
+  ctx.stroke();
+
+  ctx.fillStyle = '#888';
+  ctx.font = `500 ${11 * dpr}px 'JetBrains Mono', monospace`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let q = step; q <= FIXED_MAX_Q; q += step) {
+    ctx.fillText(q, qToX(q) * dpr, (H - MARGIN.bottom + 8) * dpr);
+  }
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let p = step; p <= FIXED_MAX_P; p += step) {
+    ctx.fillText(p, (MARGIN.left - 8) * dpr, pToY(p) * dpr);
+  }
+
+  ctx.fillStyle = '#333';
+  ctx.font = `600 ${13 * dpr}px 'IBM Plex Sans', sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('Quantity', (MARGIN.left + plotW / 2) * dpr, (H - MARGIN.bottom + 34) * dpr);
+  ctx.save();
+  ctx.translate(16 * dpr, (MARGIN.top + plotH / 2) * dpr);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('Price', 0, 0);
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawClippedLine(fn, color, width, dash, labelText) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = width * dpr;
+  if (dash) ctx.setLineDash(dash.map(d => d * dpr));
+
+  const points = [];
+  const steps = 500;
+  for (let i = 0; i <= steps; i++) {
+    const q = (i / steps) * FIXED_MAX_Q;
+    const p = fn(q);
+    if (q >= 0 && p >= 0 && p <= FIXED_MAX_P) {
+      points.push({ q, p });
+    }
+  }
+
+  if (points.length > 1) {
+    ctx.beginPath();
+    ctx.moveTo(qToX(points[0].q) * dpr, pToY(points[0].p) * dpr);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(qToX(points[i].q) * dpr, pToY(points[i].p) * dpr);
+    }
+    ctx.stroke();
+
+    if (labelText) {
+      const last = points[points.length - 1];
+      ctx.save();
+      ctx.font = `700 ${14 * dpr}px 'IBM Plex Sans', sans-serif`;
+      ctx.fillStyle = color;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      let lx = qToX(last.q) * dpr + 6 * dpr;
+      let ly = pToY(last.p) * dpr;
+      if (last.q >= FIXED_MAX_Q - 1) {
+        lx = qToX(last.q) * dpr - 4 * dpr;
+        ly = pToY(last.p) * dpr - 14 * dpr;
+        ctx.textAlign = 'right';
+      }
+      if (last.p <= 1) {
+        lx = qToX(last.q) * dpr + 6 * dpr;
+        ly = pToY(last.p) * dpr - 14 * dpr;
+        ctx.textAlign = 'left';
+      }
+      ctx.fillText(labelText, lx, ly);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+function fillClippedRegion(fnTop, fnBot, qStart, qEnd, color) {
+  if (qEnd <= qStart) return;
+  ctx.save(); ctx.fillStyle = color;
+  ctx.beginPath();
+  const steps = 150;
+  let first = true;
+  for (let i = 0; i <= steps; i++) {
+    const q = qStart + (i / steps) * (qEnd - qStart);
+    const p = Math.min(Math.max(fnTop(q), 0), FIXED_MAX_P);
+    const x = qToX(q) * dpr, y = pToY(p) * dpr;
+    if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+  }
+  for (let i = steps; i >= 0; i--) {
+    const q = qStart + (i / steps) * (qEnd - qStart);
+    const p = Math.min(Math.max(fnBot(q), 0), FIXED_MAX_P);
+    ctx.lineTo(qToX(q) * dpr, pToY(p) * dpr);
+  }
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+
+function drawDash(x1, y1, x2, y2) {
+  ctx.save();
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1.5 * dpr;
+  ctx.setLineDash([5 * dpr, 4 * dpr]);
+  ctx.beginPath();
+  ctx.moveTo(x1 * dpr, y1 * dpr);
+  ctx.lineTo(x2 * dpr, y2 * dpr);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawDot(q, p, r, color) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(qToX(q) * dpr, pToY(p) * dpr, r * dpr, 0, Math.PI * 2);
+  ctx.fillStyle = color || '#333'; ctx.fill();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * dpr; ctx.stroke();
+  ctx.restore();
+}
+
+function drawAreaLabel(text, cx, cy, color) {
+  if (cx < 0 || cx > FIXED_MAX_Q || cy < 0 || cy > FIXED_MAX_P) return;
+  ctx.save();
+  ctx.font = `700 ${15 * dpr}px 'IBM Plex Sans', sans-serif`;
+  ctx.fillStyle = color; ctx.globalAlpha = 0.75;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, qToX(cx) * dpr, pToY(cy) * dpr);
+  ctx.restore();
+}
+
+function regionCentroid(fnTop, fnBot, qStart, qEnd) {
+  if (qEnd <= qStart) return { cx: (qStart + qEnd) / 2, cy: 50 };
+  let totalA = 0, sumQA = 0, sumPA = 0;
+  const steps = 80;
+  for (let i = 0; i < steps; i++) {
+    const q = qStart + (i + 0.5) / steps * (qEnd - qStart);
+    const dq = (qEnd - qStart) / steps;
+    const top = Math.min(fnTop(q), FIXED_MAX_P);
+    const bot = Math.max(fnBot(q), 0);
+    const h = Math.max(top - bot, 0);
+    const midP = (top + bot) / 2;
+    totalA += h * dq;
+    sumQA += q * h * dq;
+    sumPA += midP * h * dq;
+  }
+  if (totalA < 0.01) return { cx: (qStart + qEnd) / 2, cy: 50 };
+  return { cx: sumQA / totalA, cy: sumPA / totalA };
+}
+
+function handleTooltip(eq) {
+  if (mouseX < 0 || eq.qm <= 0) {
+    tooltipEl.classList.remove('visible'); canvas.style.cursor = 'default'; return;
+  }
+  const eqX = qToX(eq.qm), eqY = pToY(eq.pm);
+  const mrX = qToX(eq.qm), mrY = pToY(eq.mcAtQ);
+  const d1 = Math.hypot(mouseX - eqX, mouseY - eqY);
+  const d2 = Math.hypot(mouseX - mrX, mouseY - mrY);
+  const thr = 28;
+
+  let d3 = Infinity;
+  if (toggles.comp && eq.qComp > 0 && eq.qComp <= FIXED_MAX_Q && eq.pComp >= 0) {
+    d3 = Math.hypot(mouseX - qToX(eq.qComp), mouseY - pToY(eq.pComp));
+  }
+
+  const minD = Math.min(d1, d2, d3);
+
+  if (minD > thr) {
+    tooltipEl.classList.remove('visible'); canvas.style.cursor = 'default'; return;
+  }
+
+  canvas.style.cursor = 'pointer';
+
+  if (d1 === minD) {
+    tooltipEl.innerHTML = `<div class="label">Monopoly Equilibrium</div>
+      <div style="color:#c62828;font-weight:600">Pm = ${eq.pm.toFixed(2)}</div>
+      <div style="color:#2e7d32;font-weight:600">Qm = ${eq.qm.toFixed(2)}</div>
+      <div style="color:#f9a825;font-weight:600">π = ${eq.profit.toFixed(1)}</div>`;
+    tooltipEl.style.left = Math.min(eqX + 16, W - 200) + 'px';
+    tooltipEl.style.top = Math.max(eqY - 75, 8) + 'px';
+  } else if (d2 === minD) {
+    tooltipEl.innerHTML = `<div class="label">MR = MC</div>
+      <div style="color:#2e7d32;font-weight:600">Qm = ${eq.qm.toFixed(2)}</div>
+      <div style="color:#e65100;font-weight:600">MR = MC = ${eq.mcAtQ.toFixed(2)}</div>`;
+    tooltipEl.style.left = Math.min(mrX + 16, W - 200) + 'px';
+    tooltipEl.style.top = Math.max(mrY - 55, 8) + 'px';
+  } else {
+    const cx = qToX(eq.qComp), cy = pToY(eq.pComp);
+    const compTC = params.fc + params.mc * eq.qComp + params.mcs * eq.qComp * eq.qComp / 2;
+    const compProfit = eq.pComp * eq.qComp - compTC;
+    const compCS = eq.qComp > 0 ? 0.5 * (params.a - eq.pComp) * eq.qComp : 0;
+    tooltipEl.innerHTML = `<div class="label">Competitive Equilibrium</div>
+      <div style="color:#c62828;font-weight:600">Pc = ${eq.pComp.toFixed(2)}</div>
+      <div style="color:#2e7d32;font-weight:600">Qc = ${eq.qComp.toFixed(2)}</div>
+      <div style="color:#4285f4;font-weight:600">CS = ${compCS.toFixed(1)}</div>
+      <div style="color:#f9a825;font-weight:600">π = ${compProfit.toFixed(1)}</div>`;
+    tooltipEl.style.left = Math.min(cx + 16, W - 200) + 'px';
+    tooltipEl.style.top = Math.max(cy - 90, 8) + 'px';
+  }
+
+  tooltipEl.classList.add('visible');
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+/* ─── Main loop ─── */
+function draw() {
+  const t = 0.18;
+  for (const k in params) params[k] = lerp(params[k], target[k], t);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const { a, b, mc, mcs, fc } = params;
+  const eq = compute();
+
+  const demandFn = q => a - b * q;
+  const mrFn     = q => a - 2 * b * q;
+  const mcFn     = q => mc + mcs * q;
+  const atcFn    = q => q > 0.5 ? fc / q + mc + mcs * q / 2 : 9999;
+
+  drawGrid();
+
+  /* ── Shaded regions ── */
+  if (toggles.cs && eq.qm > 0) {
+    fillClippedRegion(demandFn, () => eq.pm, 0, eq.qm, 'rgba(66,133,244,0.18)');
+    const c = regionCentroid(demandFn, () => eq.pm, 0, eq.qm);
+    drawAreaLabel('CS', c.cx, c.cy, '#4285f4');
+  }
+
+  if (toggles.ps && eq.qm > 0) {
+    fillClippedRegion(() => eq.pm, mcFn, 0, eq.qm, 'rgba(52,168,83,0.18)');
+    const c = regionCentroid(() => eq.pm, mcFn, 0, eq.qm);
+    drawAreaLabel('PS', c.cx, c.cy, '#34a853');
+  }
+
+  if (toggles.dwl && eq.qm > 0 && eq.qComp > eq.qm) {
+    fillClippedRegion(demandFn, mcFn, eq.qm, eq.qComp, 'rgba(234,67,53,0.18)');
+    const c = regionCentroid(demandFn, mcFn, eq.qm, eq.qComp);
+    drawAreaLabel('DWL', c.cx, c.cy, '#ea4335');
+  }
+
+  if (toggles.profit && eq.qm > 0) {
+    const atcVal = atcFn(eq.qm);
+    if (eq.pm > atcVal) {
+      fillClippedRegion(() => eq.pm, () => atcVal, 0, eq.qm, 'rgba(251,188,4,0.2)');
+    } else if (eq.pm < atcVal) {
+      fillClippedRegion(() => atcVal, () => eq.pm, 0, eq.qm, 'rgba(234,67,53,0.12)');
+    }
+  }
+
+  /* ── Curves ── */
+  drawClippedLine(demandFn, '#c62828', 2.8, null, 'D');
+  drawClippedLine(mrFn, '#e65100', 2.2, null, 'MR');
+  drawClippedLine(mcFn, '#2e7d32', 2.8, null, 'MC');
+  if (toggles.atc) drawClippedLine(atcFn, '#6a1b9a', 2.2, null, 'ATC');
+
+  /* ── Competitive equilibrium ── */
+  if (toggles.comp && eq.qComp > 0 && eq.qComp <= FIXED_MAX_Q && eq.pComp >= 0 && eq.pComp <= FIXED_MAX_P) {
+    drawDash(qToX(eq.qComp), pToY(eq.pComp), qToX(eq.qComp), H - MARGIN.bottom);
+    drawDash(MARGIN.left, pToY(eq.pComp), qToX(eq.qComp), pToY(eq.pComp));
+    drawDot(eq.qComp, eq.pComp, 5, '#000');
+
+    ctx.save();
+    ctx.font = `600 ${12 * dpr}px 'IBM Plex Sans', sans-serif`;
+    ctx.fillStyle = '#000';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    ctx.fillText('Pc', (MARGIN.left - 8) * dpr, (pToY(eq.pComp) - 16) * dpr);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText('Qc', qToX(eq.qComp) * dpr, (H - MARGIN.bottom + 20) * dpr);
+    ctx.restore();
+  }
+
+  /* ── Monopoly equilibrium markers ── */
+  if (eq.qm > 0 && eq.qm <= FIXED_MAX_Q && eq.pm >= 0 && eq.pm <= FIXED_MAX_P) {
+    drawDash(qToX(eq.qm), pToY(eq.pm), qToX(eq.qm), H - MARGIN.bottom);
+    drawDash(MARGIN.left, pToY(eq.pm), qToX(eq.qm), pToY(eq.pm));
+
+    drawDot(eq.qm, eq.mcAtQ, 5, '#333');
+    drawDot(eq.qm, eq.pm, 6, '#333');
+
+    ctx.save();
+    ctx.font = `600 ${12 * dpr}px 'IBM Plex Sans', sans-serif`;
+    ctx.fillStyle = '#333';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    ctx.fillText('Pm', (MARGIN.left - 8) * dpr, (pToY(eq.pm) - 16) * dpr);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText('Qm', qToX(eq.qm) * dpr, (H - MARGIN.bottom + 20) * dpr);
+    ctx.restore();
+  }
+
+  handleTooltip(eq);
+
+  /* ── Readouts ── */
+  if (eq.qm > 0) {
+    ro.p.textContent = Math.round(eq.pm);
+    ro.q.textContent = Math.round(eq.qm * 10) / 10;
+    ro.profit.textContent = Math.round(eq.profit);
+    ro.cs.textContent = Math.round(eq.cs);
+    ro.ps.textContent = Math.round(eq.ps);
+    ro.dwl.textContent = Math.round(eq.dwl);
+  } else {
+    ro.p.textContent = '—'; ro.q.textContent = '0';
+    ro.profit.textContent = '0'; ro.cs.textContent = '0';
+    ro.ps.textContent = '0'; ro.dwl.textContent = '0';
+  }
+
+  requestAnimationFrame(draw);
+}
+
+function onSlider() {
+  target.a   = +sl.a.value;   vl.a.textContent   = sl.a.value;
+  target.b   = +sl.b.value;   vl.b.textContent   = (+sl.b.value).toFixed(sl.b.value % 1 ? 2 : 0);
+  target.mc  = +sl.mc.value;  vl.mc.textContent  = sl.mc.value;
+  target.mcs = +sl.mcs.value; vl.mcs.textContent = (+sl.mcs.value).toFixed(2);
+  target.fc  = +sl.fc.value;  vl.fc.textContent  = sl.fc.value;
+}
+
+Object.values(sl).forEach(s => s.addEventListener('input', onSlider));
+
+canvas.parentElement.addEventListener('mousemove', e => {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  mouseX = e.clientX - rect.left; mouseY = e.clientY - rect.top;
+});
+canvas.parentElement.addEventListener('mouseleave', () => {
+  mouseX = -1; mouseY = -1;
+  tooltipEl.classList.remove('visible'); canvas.style.cursor = 'default';
+});
+
+window.addEventListener('resize', resize);
+resize(); onSlider(); draw();
+</script>
+</body>
+</html>
