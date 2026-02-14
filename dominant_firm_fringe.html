@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dominant Firm — Competitive Fringe</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #f5f5f5;
+    --card: #ffffff;
+    --card-border: #e8e8e8;
+    --card-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    --text: #2c2c2c;
+    --text-dim: #888;
+    --text-label: #555;
+    --demand: #c62828;
+    --mr: #e65100;
+    --mc-dom: #2e7d32;
+    --mc-fringe: #0277bd;
+    --atc-dom: #6a1b9a;
+    --atc-fringe: #4a148c;
+    --fringe-supply: #2e7d32;
+    --cs-color: #4285f4;
+    --ps-color: #34a853;
+    --dwl-color: #ea4335;
+    --profit-color: #f9a825;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', sans-serif; }
+
+  .app { display: flex; flex-direction: column; height: 100vh; }
+  .header { padding: 14px 28px 8px; font-size: 22px; font-weight: 700; flex-shrink: 0; }
+  .main { display: flex; flex: 1; gap: 16px; padding: 0 20px 10px; overflow: hidden; }
+
+  .graphs-card {
+    flex: 1; min-width: 0;
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 12px; box-shadow: var(--card-shadow);
+    display: flex; position: relative; overflow: hidden;
+  }
+
+  .graph-half {
+    flex: 1; position: relative; display: flex; flex-direction: column;
+  }
+  .graph-half:first-child { border-right: 1px solid rgba(0,0,0,0.08); }
+
+  .graph-half .graph-title {
+    position: absolute; top: 8px; left: 14px;
+    font-size: 13px; font-weight: 700; color: var(--text-dim);
+    z-index: 10; letter-spacing: 0.3px;
+  }
+
+  canvas.graph-canvas { display: block; width: 100%; flex: 1; }
+
+  canvas.overlay-canvas {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 40;
+  }
+
+  .tooltip {
+    position: absolute; pointer-events: none;
+    background: rgba(255,255,255,0.97); border: 1px solid var(--card-border);
+    border-radius: 8px; padding: 8px 14px;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    opacity: 0; transition: opacity 0.15s ease;
+    z-index: 100; white-space: nowrap; line-height: 1.7;
+  }
+  .tooltip.visible { opacity: 1; }
+  .tooltip .label { color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+
+  .sidebar {
+    width: 280px; min-width: 260px;
+    display: flex; flex-direction: column; gap: 12px;
+    overflow-y: auto; flex-shrink: 0;
+  }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 12px; box-shadow: var(--card-shadow); padding: 16px;
+  }
+  .panel-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.8px; color: var(--text-dim); margin-bottom: 12px;
+  }
+
+  .controls { display: flex; flex-direction: column; gap: 13px; }
+  .control-row { display: flex; flex-direction: column; gap: 4px; }
+  .control-header { display: flex; justify-content: space-between; align-items: center; }
+  .control-header .name { font-size: 12px; font-weight: 500; color: var(--text-label); }
+  .control-header .val { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; }
+
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 5px; border-radius: 3px; outline: none; cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.2); border: 2px solid #fff;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%;
+    cursor: pointer; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  }
+
+  .slider-demand { background: linear-gradient(90deg, #ffcdd2, #c62828); }
+  .slider-demand::-webkit-slider-thumb { background: #c62828; }
+  .slider-demand::-moz-range-thumb { background: #c62828; }
+  .slider-fringe { background: linear-gradient(90deg, #b3e5fc, #0277bd); }
+  .slider-fringe::-webkit-slider-thumb { background: #0277bd; }
+  .slider-fringe::-moz-range-thumb { background: #0277bd; }
+  .slider-mc { background: linear-gradient(90deg, #c8e6c9, #2e7d32); }
+  .slider-mc::-webkit-slider-thumb { background: #2e7d32; }
+  .slider-mc::-moz-range-thumb { background: #2e7d32; }
+  .slider-atc { background: linear-gradient(90deg, #e1bee7, #6a1b9a); }
+  .slider-atc::-webkit-slider-thumb { background: #6a1b9a; }
+  .slider-atc::-moz-range-thumb { background: #6a1b9a; }
+
+  .readouts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center; }
+  .readout-item .ro-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
+  .readout-item .ro-value { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 700; margin-top: 2px; }
+
+  .divider { height: 1px; background: var(--card-border); margin: 8px 0; }
+
+  .footer {
+    flex-shrink: 0; padding: 8px 20px 14px;
+    display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+  }
+
+  .toggle-btn {
+    border: none; border-radius: 20px; padding: 6px 15px;
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s ease; user-select: none;
+  }
+  .toggle-btn.active { color: #fff; }
+  .toggle-btn:not(.active) { background: #e8e8e8; color: #666; }
+  .toggle-btn.cs.active { background: var(--cs-color); }
+  .toggle-btn.ps.active { background: var(--ps-color); }
+  .toggle-btn.dwl.active { background: var(--dwl-color); }
+  .toggle-btn.profit.active { background: var(--profit-color); color: #333; }
+  .toggle-btn.atc-btn.active { background: var(--atc-dom); }
+  .toggle-btn.comp.active { background: #555; }
+
+  @media (max-width: 1000px) {
+    .main { flex-direction: column; padding: 0 10px 6px; }
+    .graphs-card { flex-direction: column; }
+    .graph-half:first-child { border-right: none; border-bottom: 1px solid rgba(0,0,0,0.08); }
+    .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; overflow-y: visible; }
+    .sidebar .panel { flex: 1; min-width: 220px; }
+    .graph-half { min-height: 38vh; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">Dominant Firm &amp; Competitive Fringe</div>
+  <div class="main">
+    <div class="graphs-card" id="graphs-card">
+      <div class="graph-half" id="half-left">
+        <div class="graph-title">Fringe Firm</div>
+        <canvas class="graph-canvas" id="canvas-left"></canvas>
+        <div class="tooltip" id="tooltip-left"></div>
+      </div>
+      <div class="graph-half" id="half-right">
+        <div class="graph-title">Dominant Firm</div>
+        <canvas class="graph-canvas" id="canvas-right"></canvas>
+        <div class="tooltip" id="tooltip-right"></div>
+      </div>
+      <canvas class="overlay-canvas" id="overlay"></canvas>
+    </div>
+    <div class="sidebar">
+      <div class="panel">
+        <div class="panel-title">Market Demand</div>
+        <div class="controls">
+          <div class="control-row">
+            <div class="control-header">
+              <span class="name">Intercept (a)</span>
+              <span class="val" style="color:#c62828" id="val-a">100</span>
+            </div>
+            <input type="range" class="slider-demand" id="slider-a" min="50" max="200" value="100" step="1">
+          </div>
+          <div class="control-row">
+            <div class="control-header">
+              <span class="name">Slope (b)</span>
+              <span class="val" style="color:#c62828" id="val-b">1.00</span>
+            </div>
+            <input type="range" class="slider-demand" id="slider-b" min="0.2" max="3" value="1" step="0.05">
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Fringe Supply</div>
+        <div class="controls">
+          <div class="control-row">
+            <div class="control-header">
+              <span class="name">Min Price (c<sub>f</sub>)</span>
+              <span class="val" style="color:#0277bd" id="val-cf">20</span>
+            </div>
+            <input type="range" class="slider-fringe" id="slider-cf" min="0" max="80" value="20" step="1">
+          </div>
+          <div class="control-row">
+            <div class="control-header">
+              <span class="name">Slope (d<sub>f</sub>)</span>
+              <span class="val" style="color:#0277bd" id="val-df">1.50</span>
+            </div>
+            <input type="range" class="slider-fringe" id="slider-df" min="0.2" max="5" value="1.5" step="0.05">
+          </div>
+          <div class="control-row">
+            <div class="control-header">
+              <span class="name">Num. Firms (n)</span>
+              <span class="val" style="color:#0277bd" id="val-n">5</span>
+            </div>
+            <input type="range" class="slider-fringe" id="slider-n" min="1" max="20" value="5" step="1">
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Dominant Firm</div>
+        <div class="controls">
+          <div class="control-row">
+            <div class="control-header">
+              <span class="name">MC Base</span>
+              <span class="val" style="color:#2e7d32" id="val-mc">10</span>
+            </div>
+            <input type="range" class="slider-mc" id="slider-mc" min="0" max="80" value="10" step="1">
+          </div>
+          <div class="control-row">
+            <div class="control-header">
+              <span class="name">MC Slope</span>
+              <span class="val" style="color:#2e7d32" id="val-mcs">0.30</span>
+            </div>
+            <input type="range" class="slider-mc" id="slider-mcs" min="0" max="3" value="0.3" step="0.05">
+          </div>
+          <div class="control-row">
+            <div class="control-header">
+              <span class="name">Fixed Cost</span>
+              <span class="val" style="color:#6a1b9a" id="val-fc">50</span>
+            </div>
+            <input type="range" class="slider-atc" id="slider-fc" min="0" max="1000" value="50" step="10">
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="readouts">
+          <div class="readout-item">
+            <div class="ro-label">P*</div>
+            <div class="ro-value" style="color:var(--text)" id="ro-p">—</div>
+          </div>
+          <div class="readout-item">
+            <div class="ro-label">Q<sub>d</sub></div>
+            <div class="ro-value" style="color:var(--mc-dom)" id="ro-qd">—</div>
+          </div>
+          <div class="readout-item">
+            <div class="ro-label">Q<sub>f</sub></div>
+            <div class="ro-value" style="color:var(--mc-fringe)" id="ro-qf">—</div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="readouts">
+          <div class="readout-item">
+            <div class="ro-label">π<sub>d</sub></div>
+            <div class="ro-value" style="color:var(--profit-color)" id="ro-profit">—</div>
+          </div>
+          <div class="readout-item">
+            <div class="ro-label">CS</div>
+            <div class="ro-value" style="color:var(--cs-color)" id="ro-cs">—</div>
+          </div>
+          <div class="readout-item">
+            <div class="ro-label">DWL</div>
+            <div class="ro-value" style="color:var(--dwl-color)" id="ro-dwl">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    <button class="toggle-btn cs active" data-key="cs">Consumer Surplus</button>
+    <button class="toggle-btn ps active" data-key="ps">Producer Surplus</button>
+    <button class="toggle-btn dwl active" data-key="dwl">Deadweight Loss</button>
+    <button class="toggle-btn profit" data-key="profit">Profit</button>
+    <button class="toggle-btn atc-btn" data-key="atc">ATC</button>
+    <button class="toggle-btn comp" data-key="comp">Competitive</button>
+  </div>
+</div>
+
+<script>
+/* ═══ Model ═══ */
+class DFModel {
+  constructor(p){Object.assign(this,p);}
+  marketDemandQ(P){return Math.max(0,(this.a-P)/this.b);}
+  marketDemandP(Q){return this.a-this.b*Q;}
+  fringeSupplyQ(P){return P>=this.cF?this.n*(P-this.cF)/this.dF:0;}
+  fringeSupplyP(Qf){return this.cF+(this.dF*Qf)/this.n;}
+  fringeFirmQ(P){return P>=this.cF?(P-this.cF)/this.dF:0;}
+  mcAt(q){return this.mc0+this.mcS*q;}
+  totalCost(q){return this.FC+this.mc0*q+(this.mcS*q*q)/2;}
+  atcAt(q){return q>0.5?this.totalCost(q)/q:9999;}
+  fringeFirmMC(q){return this.cF+this.dF*q;}
+  fringeFirmATC(q){return q>0.5?this.cF+this.dF*q/2:9999;}
+  kinkQ(){return Math.max(0,(this.a-this.cF)/this.b);}
+  upperSeg(){const d=this.dF/this.n;return{A:(this.a*d+this.cF*this.b)/(this.b+d),B:(this.b*d)/(this.b+d)};}
+  residualDemandP(Qd){const Qk=this.kinkQ();if(Qd>=Qk)return Math.max(0,this.a-this.b*Qd);const{A,B}=this.upperSeg();return Math.max(0,A-B*Qd);}
+  competitivePrice(){return(this.dF*this.a+this.n*this.b*this.cF)/(this.n*this.b+this.dF);}
+  solve(){
+    const{a,b,cF,dF,mc0,mcS,n,FC}=this;
+    const Qk=this.kinkQ();const{A,B}=this.upperSeg();
+    const Q1=(2*B+mcS)>0?(A-mc0)/(2*B+mcS):Infinity;
+    const Q2=(2*b+mcS)>0?(a-mc0)/(2*b+mcS):Infinity;
+    let Qd,seg;
+    if(Q1>=0&&Q1<Qk){Qd=Q1;seg='upper';}
+    else if(Q2>=0&&Q2>Qk){Qd=Q2;seg='lower';}
+    else{Qd=Qk;seg='kink';}
+    Qd=Math.max(0,Qd);
+    const Pd=this.residualDemandP(Qd);
+    const Qf=this.fringeSupplyQ(Pd);const qf=this.fringeFirmQ(Pd);const Qt=Qd+Qf;
+    const mcQd=this.mcAt(Qd);const profitD=Pd*Qd-this.totalCost(Qd);const atcQd=this.atcAt(Qd);
+    const fringeATCqf=qf>0.5?cF+dF*qf/2:0;
+    const fringeProfitPerFirm=qf>0?(Pd-fringeATCqf)*qf:0;
+    const CS=Qt>0?0.5*(a-Pd)*Qt:0;
+    let QdComp;const QdCU=(B+mcS)>0?(A-mc0)/(B+mcS):0;const QdCL=(b+mcS)>0?(a-mc0)/(b+mcS):0;
+    if(QdCU>=0&&QdCU<=Qk)QdComp=QdCU;else QdComp=Math.max(0,QdCL);
+    const PdComp=this.residualDemandP(QdComp);
+    let DWL=0;if(Qd<QdComp){const steps=200;for(let i=0;i<steps;i++){const q=Qd+(i+0.5)/steps*(QdComp-Qd);const dq=(QdComp-Qd)/steps;const pR=this.residualDemandP(q);const mcQ=this.mcAt(q);if(pR>mcQ)DWL+=(pR-mcQ)*dq;}}
+    const Pc=this.competitivePrice();
+    const QcMarket=this.marketDemandQ(Pc);
+    const QcFringe=this.fringeSupplyQ(Pc);
+    return{Pd,Qd,Qf,qf,Qt,seg,mcQd,atcQd,profitD,fringeProfitPerFirm,CS,DWL,Qk,QdComp,PdComp,Pc,QcMarket,QcFringe};
+  }
+}
+
+/* ═══ Canvas refs ═══ */
+const cL=document.getElementById('canvas-left');
+const cR=document.getElementById('canvas-right');
+const cO=document.getElementById('overlay');
+const xL=cL.getContext('2d');
+const xR=cR.getContext('2d');
+const xO=cO.getContext('2d');
+const tipL=document.getElementById('tooltip-left');
+const tipR=document.getElementById('tooltip-right');
+
+const sl={a:document.getElementById('slider-a'),b:document.getElementById('slider-b'),cf:document.getElementById('slider-cf'),df:document.getElementById('slider-df'),n:document.getElementById('slider-n'),mc:document.getElementById('slider-mc'),mcs:document.getElementById('slider-mcs'),fc:document.getElementById('slider-fc')};
+const vl={a:document.getElementById('val-a'),b:document.getElementById('val-b'),cf:document.getElementById('val-cf'),df:document.getElementById('val-df'),n:document.getElementById('val-n'),mc:document.getElementById('val-mc'),mcs:document.getElementById('val-mcs'),fc:document.getElementById('val-fc')};
+const ro={p:document.getElementById('ro-p'),qd:document.getElementById('ro-qd'),qf:document.getElementById('ro-qf'),profit:document.getElementById('ro-profit'),cs:document.getElementById('ro-cs'),dwl:document.getElementById('ro-dwl')};
+
+const toggles={cs:true,ps:true,dwl:true,profit:false,atc:false,comp:false};
+document.querySelectorAll('.toggle-btn').forEach(btn=>{btn.addEventListener('click',()=>{toggles[btn.dataset.key]=!toggles[btn.dataset.key];btn.classList.toggle('active',toggles[btn.dataset.key]);});});
+
+const MAX_Q=120,MAX_P=120;
+const M={top:30,right:28,bottom:54,left:62};
+let dpr=1,wL,hL,wR,hR,pWL,pHL,pWR,pHR;
+let mxL=-1,myL=-1,mxR=-1,myR=-1;
+let params={a:100,b:1,cF:20,dF:1.5,n:5,mc0:10,mcS:0.3,FC:50};
+let target={...params};
+
+function resize(){
+  dpr=window.devicePixelRatio||1;
+  const rL=cL.parentElement.getBoundingClientRect();const rR=cR.parentElement.getBoundingClientRect();
+  cL.width=rL.width*dpr;cL.height=rL.height*dpr;cR.width=rR.width*dpr;cR.height=rR.height*dpr;
+  wL=rL.width;hL=rL.height;wR=rR.width;hR=rR.height;
+  pWL=wL-M.left-M.right;pHL=hL-M.top-M.bottom;pWR=wR-M.left-M.right;pHR=hR-M.top-M.bottom;
+  const gc=document.getElementById('graphs-card').getBoundingClientRect();
+  cO.width=gc.width*dpr;cO.height=gc.height*dpr;cO.style.width=gc.width+'px';cO.style.height=gc.height+'px';
+}
+
+function qXL(q){return M.left+(q/MAX_Q)*pWL;}
+function qXR(q){return M.left+(q/MAX_Q)*pWR;}
+function pYL(p){return M.top+(1-p/MAX_P)*pHL;}
+function pYR(p){return M.top+(1-p/MAX_P)*pHR;}
+
+/* ═══ Drawing ═══ */
+function drawGrid(ctx,w,h,pW,pH,qX,pY,xLbl){
+  ctx.save();
+  for(let q=20;q<MAX_Q;q+=20){ctx.strokeStyle='rgba(0,0,0,0.06)';ctx.lineWidth=dpr;ctx.beginPath();ctx.moveTo(qX(q)*dpr,M.top*dpr);ctx.lineTo(qX(q)*dpr,(h-M.bottom)*dpr);ctx.stroke();}
+  for(let p=20;p<MAX_P;p+=20){ctx.strokeStyle='rgba(0,0,0,0.06)';ctx.lineWidth=dpr;ctx.beginPath();ctx.moveTo(M.left*dpr,pY(p)*dpr);ctx.lineTo((w-M.right)*dpr,pY(p)*dpr);ctx.stroke();}
+  ctx.strokeStyle='#333';ctx.lineWidth=1.8*dpr;
+  ctx.beginPath();ctx.moveTo(M.left*dpr,M.top*dpr);ctx.lineTo(M.left*dpr,(h-M.bottom)*dpr);ctx.lineTo((w-M.right)*dpr,(h-M.bottom)*dpr);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font=`500 ${10*dpr}px 'JetBrains Mono',monospace`;
+  ctx.textAlign='center';ctx.textBaseline='top';
+  for(let q=20;q<=MAX_Q;q+=20)ctx.fillText(q,qX(q)*dpr,(h-M.bottom+7)*dpr);
+  ctx.textAlign='right';ctx.textBaseline='middle';
+  for(let p=20;p<=MAX_P;p+=20)ctx.fillText(p,(M.left-7)*dpr,pY(p)*dpr);
+  ctx.fillStyle='#333';ctx.font=`600 ${12*dpr}px 'IBM Plex Sans',sans-serif`;
+  ctx.textAlign='center';ctx.textBaseline='top';
+  ctx.fillText(xLbl,(M.left+pW/2)*dpr,(h-M.bottom+32)*dpr);
+  ctx.save();ctx.translate(16*dpr,(M.top+pH/2)*dpr);ctx.rotate(-Math.PI/2);ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('Price',0,0);ctx.restore();
+  ctx.restore();
+}
+
+function drawCurve(ctx,fn,qX,pY,color,w,dash,label,mq){
+  const maxq=mq!=null?mq:MAX_Q;
+  ctx.save();ctx.strokeStyle=color;ctx.lineWidth=w*dpr;
+  if(dash)ctx.setLineDash(dash.map(d=>d*dpr));
+  const pts=[];
+  for(let i=0;i<=500;i++){const q=(i/500)*maxq;const p=fn(q);if(p<0)break;if(q>=0&&p<=MAX_P)pts.push({q,p});}
+  if(pts.length>1){
+    ctx.beginPath();ctx.moveTo(qX(pts[0].q)*dpr,pY(pts[0].p)*dpr);
+    for(let i=1;i<pts.length;i++)ctx.lineTo(qX(pts[i].q)*dpr,pY(pts[i].p)*dpr);
+    ctx.stroke();
+    if(label){
+      const last=pts[pts.length-1];ctx.setLineDash([]);
+      ctx.font=`700 ${13*dpr}px 'IBM Plex Sans',sans-serif`;
+      ctx.fillStyle=color;
+      // Label at end of curve
+      let lx=qX(last.q)*dpr+5*dpr;
+      let ly=pY(last.p)*dpr;
+      ctx.textAlign='left';ctx.textBaseline='middle';
+      // If ends near bottom, put label above the endpoint
+      if(last.p<=5){ly-=14*dpr;}
+      // If ends at max q, put label above-left
+      if(last.q>=maxq-2){lx=qX(last.q)*dpr-4*dpr;ly-=14*dpr;ctx.textAlign='right';}
+      ctx.fillText(label,lx,ly);
+    }
+  }
+  ctx.restore();
+}
+
+/* Kinked residual demand with label "Dd(p)" on upper segment */
+function drawKinked(ctx,model,qX,pY,color,w){
+  const Qk=model.kinkQ();const{A,B}=model.upperSeg();
+  ctx.save();ctx.strokeStyle=color;ctx.lineWidth=w*dpr;
+  // Upper segment
+  let pts=[];
+  for(let i=0;i<=200;i++){const q=(i/200)*Qk;const p=A-B*q;if(p<0)break;if(p<=MAX_P&&q<=MAX_Q)pts.push({q,p});}
+  if(pts.length>1){ctx.beginPath();ctx.moveTo(qX(pts[0].q)*dpr,pY(pts[0].p)*dpr);for(let i=1;i<pts.length;i++)ctx.lineTo(qX(pts[i].q)*dpr,pY(pts[i].p)*dpr);ctx.stroke();}
+
+  // Lower segment (this IS D(p) below the kink)
+  pts=[];
+  for(let i=0;i<=200;i++){const q=Qk+(i/200)*(MAX_Q-Qk);const p=model.a-model.b*q;if(p<0)break;if(p<=MAX_P)pts.push({q,p});}
+  if(pts.length>1){
+    ctx.beginPath();ctx.moveTo(qX(pts[0].q)*dpr,pY(pts[0].p)*dpr);for(let i=1;i<pts.length;i++)ctx.lineTo(qX(pts[i].q)*dpr,pY(pts[i].p)*dpr);ctx.stroke();
+
+    // Label "D(p)=Dr" at end of lower segment
+    const last=pts[pts.length-1];
+    ctx.font=`700 ${13*dpr}px 'IBM Plex Sans',sans-serif`;
+    ctx.fillStyle=color;
+    let lx=qX(last.q)*dpr+5*dpr;
+    let ly=pY(last.p)*dpr;
+    ctx.textAlign='left';ctx.textBaseline='middle';
+    if(last.p<=5)ly-=14*dpr;
+    ctx.fillText('D(p)=Dr',lx,ly);
+  }
+
+  // Kink dot
+  const kP=model.residualDemandP(Qk);
+  if(Qk>0&&Qk<MAX_Q&&kP>0&&kP<MAX_P){ctx.beginPath();ctx.arc(qX(Qk)*dpr,pY(kP)*dpr,3.5*dpr,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();}
+
+  // Label "Dd(p)" on upper segment
+  const lq=Math.min(Qk*0.55,MAX_Q-10);const lp=A-B*lq;
+  if(lp>5&&lp<MAX_P-5){ctx.font=`700 ${13*dpr}px 'IBM Plex Sans',sans-serif`;ctx.fillStyle=color;ctx.textAlign='left';ctx.textBaseline='bottom';ctx.fillText('Dd(p)',qX(lq)*dpr+6*dpr,pY(lp)*dpr-4*dpr);}
+
+  ctx.restore();
+}
+
+function drawMRGap(ctx,model,qX,pY,color,w){
+  const Qk=model.kinkQ();const{A,B}=model.upperSeg();
+  ctx.save();ctx.strokeStyle=color;ctx.lineWidth=w*dpr;
+  let pts=[];for(let i=0;i<=200;i++){const q=(i/200)*Qk;const p=A-2*B*q;if(p<0)break;if(p<=MAX_P)pts.push({q,p});}
+  if(pts.length>1){ctx.beginPath();ctx.moveTo(qX(pts[0].q)*dpr,pY(pts[0].p)*dpr);for(let i=1;i<pts.length;i++)ctx.lineTo(qX(pts[i].q)*dpr,pY(pts[i].p)*dpr);ctx.stroke();}
+  pts=[];for(let i=0;i<=200;i++){const q=Qk+(i/200)*(MAX_Q-Qk);const p=model.a-2*model.b*q;if(p<0)break;if(p<=MAX_P)pts.push({q,p});}
+  if(pts.length>1){ctx.beginPath();ctx.moveTo(qX(pts[0].q)*dpr,pY(pts[0].p)*dpr);for(let i=1;i<pts.length;i++)ctx.lineTo(qX(pts[i].q)*dpr,pY(pts[i].p)*dpr);ctx.stroke();}
+  const mrT=A-2*B*Qk,mrB=model.a-2*model.b*Qk;
+  if(Qk>0&&Qk<MAX_Q&&mrT>mrB){ctx.setLineDash([4*dpr,4*dpr]);ctx.lineWidth=1.5*dpr;ctx.beginPath();ctx.moveTo(qX(Qk)*dpr,pY(Math.min(mrT,MAX_P))*dpr);ctx.lineTo(qX(Qk)*dpr,pY(Math.max(mrB,0))*dpr);ctx.stroke();}
+  const lq=Math.min(Qk*0.4,MAX_Q*0.3);const lp=A-2*B*lq;
+  if(lp>5&&lp<MAX_P){ctx.setLineDash([]);ctx.font=`700 ${13*dpr}px 'IBM Plex Sans',sans-serif`;ctx.fillStyle=color;ctx.textAlign='left';ctx.textBaseline='bottom';ctx.fillText('MRd',qX(lq)*dpr+5*dpr,pY(lp)*dpr-3*dpr);}
+  ctx.restore();
+}
+
+function fillReg(ctx,fT,fB,qs,qe,qX,pY,col){
+  if(qe<=qs)return;ctx.save();ctx.fillStyle=col;ctx.beginPath();
+  const S=120;let first=true;
+  for(let i=0;i<=S;i++){const q=qs+(i/S)*(qe-qs);const p=Math.min(Math.max(fT(q),0),MAX_P);if(first){ctx.moveTo(qX(q)*dpr,pY(p)*dpr);first=false;}else ctx.lineTo(qX(q)*dpr,pY(p)*dpr);}
+  for(let i=S;i>=0;i--){const q=qs+(i/S)*(qe-qs);const p=Math.min(Math.max(fB(q),0),MAX_P);ctx.lineTo(qX(q)*dpr,pY(p)*dpr);}
+  ctx.closePath();ctx.fill();ctx.restore();
+}
+
+function centroid(fT,fB,qs,qe){
+  if(qe<=qs)return{cx:(qs+qe)/2,cy:50};let tA=0,sQ=0,sP=0;
+  for(let i=0;i<60;i++){const q=qs+(i+0.5)/60*(qe-qs);const dq=(qe-qs)/60;const t=Math.min(fT(q),MAX_P);const b=Math.max(fB(q),0);const h=Math.max(t-b,0);tA+=h*dq;sQ+=q*h*dq;sP+=((t+b)/2)*h*dq;}
+  if(tA<0.01)return{cx:(qs+qe)/2,cy:50};return{cx:sQ/tA,cy:sP/tA};
+}
+
+function areaLbl(ctx,t,cx,cy,qX,pY,col){
+  if(cx<0||cx>MAX_Q||cy<0||cy>MAX_P)return;
+  ctx.save();ctx.font=`700 ${14*dpr}px 'IBM Plex Sans',sans-serif`;ctx.fillStyle=col;ctx.globalAlpha=0.75;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t,qX(cx)*dpr,pY(cy)*dpr);ctx.restore();
+}
+
+function ddash(ctx,x1,y1,x2,y2,col){ctx.save();ctx.strokeStyle=col||'#000';ctx.lineWidth=1.5*dpr;ctx.setLineDash([5*dpr,4*dpr]);ctx.beginPath();ctx.moveTo(x1*dpr,y1*dpr);ctx.lineTo(x2*dpr,y2*dpr);ctx.stroke();ctx.restore();}
+function dot(ctx,qX,pY,q,p,r,col){ctx.save();ctx.beginPath();ctx.arc(qX(q)*dpr,pY(p)*dpr,r*dpr,0,Math.PI*2);ctx.fillStyle=col||'#333';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2*dpr;ctx.stroke();ctx.restore();}
+function axLbl(ctx,t,x,y,a,bl,col){ctx.save();ctx.font=`600 ${11*dpr}px 'IBM Plex Sans',sans-serif`;ctx.fillStyle=col||'#333';ctx.textAlign=a;ctx.textBaseline=bl;ctx.fillText(t,x*dpr,y*dpr);ctx.restore();}
+
+/* ═══ Overlay: seamless price lines ═══ */
+function drawOverlay(model,eq){
+  const gc=document.getElementById('graphs-card');
+  const gcR=gc.getBoundingClientRect();
+  const lR=cL.parentElement.getBoundingClientRect();
+  const rR2=cR.parentElement.getBoundingClientRect();
+  xO.clearRect(0,0,cO.width,cO.height);
+
+  const lAxisL=lR.left-gcR.left+M.left;
+  const rAxisR=rR2.left-gcR.left+wR-M.right;
+
+  function pYov(p){return M.top+(1-p/MAX_P)*pHL;}
+
+  const lines=[];
+  if(eq.Qd>0&&eq.Pd>0&&eq.Pd<MAX_P)lines.push({p:eq.Pd,label:'P*',color:'#333',priority:1});
+  if(params.cF>0&&params.cF<MAX_P)lines.push({p:params.cF,label:'p̄',color:'#333',priority:2}); // BLACK
+  const pC=model.competitivePrice();
+  if(pC>0&&pC<MAX_P)lines.push({p:pC,label:'Pc',color:'#555',priority:3});
+
+  lines.sort((a,b)=>b.p-a.p);
+
+  // Collision avoidance
+  const minGap=14;
+  const leftPositions=[];
+  const rightPositions=[];
+  for(const line of lines){
+    let yNat=pYov(line.p);
+    let yLeft=yNat;
+    for(const prev of leftPositions){if(Math.abs(yLeft-prev)<minGap)yLeft=prev+minGap;}
+    leftPositions.push(yLeft);
+    let yRight=yNat;
+    for(const prev of rightPositions){if(Math.abs(yRight-prev)<minGap)yRight=prev+minGap;}
+    rightPositions.push(yRight);
+    line._yLine=yNat;line._yLeft=yLeft;line._yRight=yRight;
+  }
+
+  for(const{p,label,color,_yLine,_yLeft,_yRight}of lines){
+    xO.save();xO.strokeStyle=color;xO.lineWidth=1.5*dpr;
+    xO.setLineDash([6*dpr,5*dpr]);xO.globalAlpha=0.55;
+    xO.beginPath();xO.moveTo(lAxisL*dpr,_yLine*dpr);xO.lineTo(rAxisR*dpr,_yLine*dpr);xO.stroke();
+    xO.restore();
+
+    // Left label
+    xO.save();xO.font=`600 ${11*dpr}px 'IBM Plex Sans',sans-serif`;
+    xO.fillStyle=color;xO.textAlign='right';xO.textBaseline='middle';
+    xO.fillText(label,(lAxisL-7)*dpr,_yLeft*dpr);
+    xO.restore();
+
+    // Right label
+    xO.save();xO.font=`600 ${11*dpr}px 'IBM Plex Sans',sans-serif`;
+    xO.fillStyle=color;xO.textAlign='left';xO.textBaseline='middle';
+    xO.fillText(label,(rAxisR+5)*dpr,_yRight*dpr);
+    xO.restore();
+  }
+}
+
+/* ═══ Main Draw ═══ */
+function lerp(a,b,t){return a+(b-a)*t;}
+
+function draw(){
+  const t=0.18;for(const k in params)params[k]=lerp(params[k],target[k],t);
+
+  const model=new DFModel(params);
+  const eq=model.solve();
+  const mcDom=q=>model.mcAt(q);
+  const atcDom=q=>model.atcAt(q);
+  const resDem=q=>model.residualDemandP(q);
+  const demFn=q=>model.a-model.b*q;
+  const Qk=model.kinkQ();
+
+  let dwlEnd=eq.QdComp;
+  for(let q=eq.Qd;q<=eq.QdComp+1;q+=0.2){if(resDem(q)<=mcDom(q)){dwlEnd=q;break;}}
+
+  /* ════ RIGHT ════ */
+  xR.clearRect(0,0,cR.width,cR.height);
+  drawGrid(xR,wR,hR,pWR,pHR,qXR,pYR,'Dominant firm output, Q');
+
+  if(toggles.cs&&eq.Qd>0){fillReg(xR,resDem,()=>eq.Pd,0,eq.Qd,qXR,pYR,'rgba(66,133,244,0.18)');const c=centroid(resDem,()=>eq.Pd,0,eq.Qd);areaLbl(xR,'CS',c.cx,c.cy,qXR,pYR,'#4285f4');}
+  if(toggles.ps&&eq.Qd>0){fillReg(xR,()=>eq.Pd,mcDom,0,eq.Qd,qXR,pYR,'rgba(52,168,83,0.18)');const c=centroid(()=>eq.Pd,mcDom,0,eq.Qd);areaLbl(xR,'PS_d',c.cx,c.cy,qXR,pYR,'#34a853');}
+  if(toggles.dwl&&eq.Qd>0&&dwlEnd>eq.Qd){
+    xR.save();xR.fillStyle='rgba(234,67,53,0.18)';xR.beginPath();
+    const vp=[];for(let i=0;i<=120;i++){const q=eq.Qd+(i/120)*(dwlEnd-eq.Qd);const pT=resDem(q);const pB=mcDom(q);if(pT>pB)vp.push({q,pT:Math.min(pT,MAX_P),pB:Math.max(pB,0)});}
+    if(vp.length>1){xR.moveTo(qXR(vp[0].q)*dpr,pYR(vp[0].pT)*dpr);for(let i=1;i<vp.length;i++)xR.lineTo(qXR(vp[i].q)*dpr,pYR(vp[i].pT)*dpr);for(let i=vp.length-1;i>=0;i--)xR.lineTo(qXR(vp[i].q)*dpr,pYR(vp[i].pB)*dpr);xR.closePath();xR.fill();const c=centroid(resDem,mcDom,vp[0].q,vp[vp.length-1].q);areaLbl(xR,'DWL',c.cx,c.cy,qXR,pYR,'#ea4335');}
+    xR.restore();
+  }
+  if(toggles.profit&&eq.Qd>0){const atcV=atcDom(eq.Qd);if(eq.Pd>atcV){fillReg(xR,()=>eq.Pd,()=>atcV,0,eq.Qd,qXR,pYR,'rgba(251,188,4,0.22)');const c=centroid(()=>eq.Pd,()=>atcV,0,eq.Qd);areaLbl(xR,'πd',c.cx,c.cy,qXR,pYR,'#e8a000');}else if(eq.Pd<atcV){fillReg(xR,()=>atcV,()=>eq.Pd,0,eq.Qd,qXR,pYR,'rgba(234,67,53,0.12)');}}
+
+  // D(p) dotted red — only above kink, NO label (label is on lower segment via drawKinked)
+  if(Qk>0)drawCurve(xR,demFn,qXR,pYR,'#c62828',2,[6,5],null,Qk);
+
+  // Kinked residual demand (labels Dd(p) on upper, D(p)=Dr on lower end)
+  drawKinked(xR,model,qXR,pYR,'#c62828',2.8);
+  drawMRGap(xR,model,qXR,pYR,'#e65100',2.2);
+  drawCurve(xR,mcDom,qXR,pYR,'#2e7d32',2.8,null,'MCd');
+  if(toggles.atc)drawCurve(xR,atcDom,qXR,pYR,'#6a1b9a',2.2,null,'ACd');
+
+  if(toggles.comp&&eq.QdComp>0&&eq.QdComp<=MAX_Q&&eq.PdComp>=0&&eq.PdComp<=MAX_P){
+    ddash(xR,qXR(eq.QdComp),pYR(eq.PdComp),qXR(eq.QdComp),hR-M.bottom);
+    dot(xR,qXR,pYR,eq.QdComp,eq.PdComp,5,'#000');
+    axLbl(xR,'Q*',qXR(eq.QdComp),hR-M.bottom+18,'center','top');
+  }
+
+  if(eq.Qd>0&&eq.Qd<=MAX_Q&&eq.Pd>=0&&eq.Pd<=MAX_P){
+    ddash(xR,qXR(eq.Qd),pYR(eq.Pd),qXR(eq.Qd),hR-M.bottom);
+    dot(xR,qXR,pYR,eq.Qd,eq.mcQd,5,'#333');
+    dot(xR,qXR,pYR,eq.Qd,eq.Pd,6,'#333');
+    axLbl(xR,'Qd',qXR(eq.Qd),hR-M.bottom+18,'center','top');
+  }
+
+  /* ════ LEFT ════ */
+  xL.clearRect(0,0,cL.width,cL.height);
+  drawGrid(xL,wL,hL,pWL,pHL,qXL,pYL,'Fringe firm output, q');
+
+  const fMC=q=>model.fringeFirmMC(q);
+  const fATC=q=>model.fringeFirmATC(q);
+
+  if(toggles.profit&&eq.qf>0&&eq.Pd>0){const fA=fATC(eq.qf);if(eq.Pd>fA){fillReg(xL,()=>eq.Pd,()=>fA,0,eq.qf,qXL,pYL,'rgba(251,188,4,0.22)');const c=centroid(()=>eq.Pd,()=>fA,0,eq.qf);areaLbl(xL,'πf',c.cx,c.cy,qXL,pYL,'#e8a000');}}
+
+  drawCurve(xL,demFn,qXL,pYL,'#c62828',2,null,'D(p)');
+  drawCurve(xL,q=>model.fringeSupplyP(q),qXL,pYL,'#2e7d32',2.5,null,'S(p)');
+  drawCurve(xL,fMC,qXL,pYL,'#0277bd',2.8,null,'MCf');
+  if(toggles.atc)drawCurve(xL,fATC,qXL,pYL,'#4a148c',2.2,null,'ACf');
+
+  // S(p) ∩ D(p) intersection dot
+  const pC=model.competitivePrice();
+  const qcTotal=model.marketDemandQ(pC);
+  if(pC>0&&pC<MAX_P&&qcTotal>0&&qcTotal<MAX_Q)dot(xL,qXL,pYL,qcTotal,pC,5,'#555');
+
+  if(eq.qf>0&&eq.Pd>0&&eq.Pd<=MAX_P){
+    ddash(xL,qXL(eq.qf),pYL(eq.Pd),qXL(eq.qf),hL-M.bottom);
+    dot(xL,qXL,pYL,eq.qf,eq.Pd,5,'#333');
+    axLbl(xL,'qf',qXL(eq.qf),hL-M.bottom+18,'center','top');
+  }
+
+  drawOverlay(model,eq);
+  handleTipR(model,eq);
+  handleTipL(model,eq);
+
+  if(eq.Qd>0){ro.p.textContent=Math.round(eq.Pd);ro.qd.textContent=(Math.round(eq.Qd*10)/10).toString();ro.qf.textContent=(Math.round(eq.Qf*10)/10).toString();ro.profit.textContent=Math.round(eq.profitD);ro.cs.textContent=Math.round(eq.CS);ro.dwl.textContent=Math.round(eq.DWL);}
+  else{ro.p.textContent='—';ro.qd.textContent='0';ro.qf.textContent='0';ro.profit.textContent='0';ro.cs.textContent='0';ro.dwl.textContent='0';}
+
+  requestAnimationFrame(draw);
+}
+
+/* ═══ Tooltips ═══ */
+function handleTipR(model,eq){
+  if(mxR<0||eq.Qd<=0){tipR.classList.remove('visible');cR.style.cursor='default';return;}
+  const pts=[{x:qXR(eq.Qd),y:pYR(eq.Pd),t:'eq'},{x:qXR(eq.Qd),y:pYR(eq.mcQd),t:'mc'}];
+  if(toggles.comp&&eq.QdComp>0)pts.push({x:qXR(eq.QdComp),y:pYR(eq.PdComp),t:'comp'});
+  let best=null,bd=30;for(const pt of pts){const d=Math.hypot(mxR-pt.x,myR-pt.y);if(d<bd){bd=d;best=pt;}}
+  if(!best){tipR.classList.remove('visible');cR.style.cursor='default';return;}
+  cR.style.cursor='pointer';
+  if(best.t==='eq')tipR.innerHTML=`<div class="label">Dominant Firm Equilibrium</div><div style="color:#c62828;font-weight:600">P* = ${eq.Pd.toFixed(2)}</div><div style="color:#2e7d32;font-weight:600">Qd = ${eq.Qd.toFixed(2)}</div><div style="color:#0277bd;font-weight:600">Qf = ${eq.Qf.toFixed(2)}</div><div style="color:#f9a825;font-weight:600">πd = ${eq.profitD.toFixed(1)}</div>`;
+  else if(best.t==='mc')tipR.innerHTML=`<div class="label">MR = MC</div><div style="color:#2e7d32;font-weight:600">Qd = ${eq.Qd.toFixed(2)}</div><div style="color:#e65100;font-weight:600">MR = MC = ${eq.mcQd.toFixed(2)}</div><div style="font-size:11px;color:#888">Segment: ${eq.seg}</div>`;
+  else tipR.innerHTML=`<div class="label">Efficient Equilibrium</div><div style="color:#c62828;font-weight:600">Pc = ${eq.PdComp.toFixed(2)}</div><div style="color:#2e7d32;font-weight:600">Q* = ${eq.QdComp.toFixed(2)}</div>`;
+  tipR.style.left=Math.min(best.x+16,wR-200)+'px';tipR.style.top=Math.max(best.y-80,8)+'px';tipR.classList.add('visible');
+}
+
+function handleTipL(model,eq){
+  if(mxL<0){tipL.classList.remove('visible');cL.style.cursor='default';return;}
+  const pC=model.competitivePrice();
+  const qcTotal=model.marketDemandQ(pC);
+  const qcFringe=model.fringeSupplyQ(pC);
+  const pts=[];
+  if(eq.qf>0&&eq.Pd>0)pts.push({x:qXL(eq.qf),y:pYL(eq.Pd),t:'fringe'});
+  if(pC>0&&pC<MAX_P&&qcTotal>0&&qcTotal<MAX_Q)pts.push({x:qXL(qcTotal),y:pYL(pC),t:'sdint'});
+  let best=null,bd=30;for(const pt of pts){const d=Math.hypot(mxL-pt.x,myL-pt.y);if(d<bd){bd=d;best=pt;}}
+  if(!best){tipL.classList.remove('visible');cL.style.cursor='default';return;}
+  cL.style.cursor='pointer';
+  if(best.t==='fringe')tipL.innerHTML=`<div class="label">Fringe Firm</div><div style="color:#0277bd;font-weight:600">P* = ${eq.Pd.toFixed(2)}</div><div style="color:#0277bd;font-weight:600">qf = ${eq.qf.toFixed(2)}</div><div style="color:#f9a825;font-weight:600">πf = ${eq.fringeProfitPerFirm.toFixed(1)}</div><div style="font-size:11px;color:#888">${Math.round(params.n)} firms × ${eq.qf.toFixed(1)} = ${eq.Qf.toFixed(1)}</div>`;
+  else tipL.innerHTML=`<div class="label">S(p) = D(p) Intersection</div><div style="color:#555;font-weight:600">Pc = ${pC.toFixed(2)}</div><div style="color:#c62828;font-weight:600">Q (market) = ${qcTotal.toFixed(2)}</div><div style="color:#2e7d32;font-weight:600">Qf (fringe total) = ${qcFringe.toFixed(2)}</div><div style="font-size:11px;color:#888">Competitive outcome if no dominant firm</div>`;
+  tipL.style.left=Math.min(best.x+16,wL-220)+'px';tipL.style.top=Math.max(best.y-80,8)+'px';tipL.classList.add('visible');
+}
+
+function onSlider(){
+  target.a=+sl.a.value;vl.a.textContent=sl.a.value;
+  target.b=+sl.b.value;vl.b.textContent=(+sl.b.value).toFixed(2);
+  target.cF=+sl.cf.value;vl.cf.textContent=sl.cf.value;
+  target.dF=+sl.df.value;vl.df.textContent=(+sl.df.value).toFixed(2);
+  target.n=+sl.n.value;vl.n.textContent=sl.n.value;
+  target.mc0=+sl.mc.value;vl.mc.textContent=sl.mc.value;
+  target.mcS=+sl.mcs.value;vl.mcs.textContent=(+sl.mcs.value).toFixed(2);
+  target.FC=+sl.fc.value;vl.fc.textContent=sl.fc.value;
+}
+Object.values(sl).forEach(s=>s.addEventListener('input',onSlider));
+
+document.getElementById('half-right').addEventListener('mousemove',e=>{const r=cR.parentElement.getBoundingClientRect();mxR=e.clientX-r.left;myR=e.clientY-r.top;});
+document.getElementById('half-right').addEventListener('mouseleave',()=>{mxR=-1;myR=-1;tipR.classList.remove('visible');cR.style.cursor='default';});
+document.getElementById('half-left').addEventListener('mousemove',e=>{const r=cL.parentElement.getBoundingClientRect();mxL=e.clientX-r.left;myL=e.clientY-r.top;});
+document.getElementById('half-left').addEventListener('mouseleave',()=>{mxL=-1;myL=-1;tipL.classList.remove('visible');cL.style.cursor='default';});
+
+window.addEventListener('resize',resize);
+resize();onSlider();draw();
+</script>
+</body>
+</html>
