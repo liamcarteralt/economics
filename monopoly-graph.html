@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monopoly – Interactive Graph</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    background: #f9f9f9;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: #333;
+    padding: 24px 16px;
+  }
+  .wrap { max-width: 1020px; margin: 0 auto; }
+  h1 { font-size: 24px; font-weight: 700; margin-bottom: 16px; }
+  .layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .graph-card {
+    background: #fff; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #e5e5e5;
+    flex: 1 1 580px; min-width: 340;
+  }
+  .graph-card svg { display: block; width: 100%; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 16px 14px; }
+  .pill {
+    padding: 7px 14px; border-radius: 20px; cursor: pointer; border: none;
+    font-size: 12.5px; font-weight: 600; font-family: sans-serif;
+    transition: all 0.15s;
+  }
+  .pill.on { color: #fff; }
+  .pill.off { background: #eee; color: #aaa; }
+  .side { flex: 0 1 290px; min-width: 250; display: flex; flex-direction: column; gap: 14px; }
+  .card {
+    background: #fff; border-radius: 12px; padding: 20px 22px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #e5e5e5;
+  }
+  .slider-row { margin-bottom: 12px; }
+  .slider-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .slider-label { font-size: 13px; font-weight: 500; color: #333; }
+  .slider-val { font-size: 13px; font-weight: 700; }
+  input[type=range] { width: 100%; height: 4px; cursor: pointer; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .stat { text-align: center; padding: 8px 0; }
+  .stat-label { font-size: 10px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 2px; }
+  .stat-val { font-size: 20px; font-weight: 800; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Monopoly</h1>
+  <div class="layout">
+    <div class="graph-card">
+      <svg id="graph" viewBox="0 0 580 480" style="touch-action:none;user-select:none;"></svg>
+      <div class="pills" id="pills"></div>
+    </div>
+    <div class="side">
+      <div class="card" id="sliders"></div>
+      <div class="card"><div class="stats" id="stats"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const W = 580, H = 480, PAD = { top: 30, right: 30, bottom: 50, left: 55 };
+const PW = W - PAD.left - PAD.right, PH = H - PAD.top - PAD.bottom;
+const MAX = 100;
+
+const COL = {
+  demand: "#c0392b", mr: "#e67e22", mc: "#27ae60", atc: "#8e44ad",
+  cs: "rgba(41,98,255,0.13)", ps: "rgba(39,174,96,0.13)",
+  dwl: "rgba(220,50,47,0.11)", profit: "rgba(39,174,96,0.11)", loss: "rgba(220,50,47,0.11)",
+  csBord: "rgba(41,98,255,0.4)", psBord: "rgba(39,174,96,0.4)",
+  dwlBord: "rgba(220,50,47,0.35)", profitBord: "rgba(39,174,96,0.35)", lossBord: "rgba(220,50,47,0.35)",
+  csText: "#2962ff", dwlText: "#c0392b", comp: "#4834d4",
+  grid: "#e8e8e8", axis: "#bbb", tick: "#999", txt: "#333", muted: "#888", guide: "#aaa", lossRed: "#c0392b",
+};
+
+function tx(q) { return PAD.left + (q / MAX) * PW; }
+function ty(p) { return PAD.top + (1 - p / MAX) * PH; }
+function fromX(px) { return ((px - PAD.left) / PW) * MAX; }
+function fromY(py) { return (1 - (py - PAD.top) / PH) * MAX; }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function polyStr(arr) { return arr.map(([q,p]) => `${tx(q)},${ty(p)}`).join(" "); }
+
+// State
+let state = { a: 90, b: 1.0, c: 10, d: 0.5, fc: 200 };
+let toggles = { cs: true, ps: true, dwl: true, profit: false, atc: false, comp: false };
+let selectedPt = null;
+let dragging = null;
+
+// SVG helper
+const svg = document.getElementById("graph");
+const NS = "http://www.w3.org/2000/svg";
+
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k,v] of Object.entries(attrs || {})) {
+    if (k === "text") { e.textContent = v; }
+    else { e.setAttribute(k.replace(/([A-Z])/g, '-$1').toLowerCase(), v); }
+  }
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+function compute() {
+  const {a,b,c,d,fc} = state;
+  const Qm = Math.max(0, Math.min(MAX, (a-c)/(2*b+d)));
+  const Pm = Math.min(MAX, a - b*Qm);
+  const MCm = c + d*Qm;
+  const Qc = Math.max(0, Math.min(MAX, (a-c)/(b+d)));
+  const Pc = Math.min(MAX, a - b*Qc);
+  const ATCm = Qm > 0 ? fc/Qm + c + d*Qm/2 : 999;
+  const profit = (Pm - ATCm) * Qm;
+  const isLoss = profit < 0;
+  const n = 100;
+  const qMax = Math.min(a/b, MAX);
+  const dem=[], mr=[], mc=[], atc=[];
+  for (let i=0;i<=n;i++) {
+    const q = (qMax/n)*i;
+    dem.push([q, a-b*q]);
+    const mrp = a-2*b*q; if(mrp>=0) mr.push([q,mrp]);
+    const mcp = c+d*q; if(mcp<=MAX) mc.push([q,mcp]);
+    if(q>1){ const atcv=fc/q+c+d*q/2; if(atcv<=MAX&&atcv>0) atc.push([q,atcv]); }
+  }
+  const csPoly = [[0,Math.min(a,MAX)],[Qm,Pm],[0,Pm]];
+  const psMc = [];
+  for(let i=n;i>=0;i--){ const q=(Qm/n)*i; psMc.push([q,c+d*q]); }
+  const psPoly = [[0,Pm],[Qm,Pm],...psMc];
+  const dwlPoly = [];
+  const s=40;
+  for(let i=0;i<=s;i++){const q=Qm+((Qc-Qm)/s)*i; dwlPoly.push([q,a-b*q]);}
+  for(let i=s;i>=0;i--){const q=Qm+((Qc-Qm)/s)*i; dwlPoly.push([q,c+d*q]);}
+  const profTop=Math.max(Pm,ATCm), profBot=Math.min(Pm,ATCm);
+  const profitPoly=[[0,profTop],[Qm,profTop],[Qm,profBot],[0,profBot]];
+  const csArea = 0.5*(Math.min(a,MAX)-Pm)*Qm;
+  const psArea = (Pm-c)*Qm - 0.5*d*Qm*Qm;
+  const dwlArea = 0.5*(Pm-Pc)*(Qc-Qm);
+  // Centroids
+  let csCx=0,csCy=0; csPoly.forEach(([q,p])=>{csCx+=q;csCy+=p;}); csCx/=3; csCy/=3;
+  const psCentQ = Qm*0.35, psCentP = (Pm+(c+d*psCentQ))/2;
+  const dwlCentQ = (Qm+Qc)/2, dwlCentP = ((a-b*dwlCentQ)+(c+d*dwlCentQ))/2;
+
+  return { Qm,Pm,MCm,Qc,Pc,ATCm,profit,isLoss,dem,mr,mc,atc,
+    csPoly,psPoly,dwlPoly,profitPoly,csArea,psArea,dwlArea,
+    csCx,csCy,psCentQ,psCentP,dwlCentQ,dwlCentP };
+}
+
+function pathD(pts) { return pts.map((p,i)=>`${i===0?"M":"L"}${tx(p[0])},${ty(p[1])}`).join(" "); }
+
+function render() {
+  const m = compute();
+  svg.innerHTML = "";
+
+  // Defs
+  const defs = el("defs",{},svg);
+  const filter = el("filter",{id:"shadow",x:"-20%",y:"-20%",width:"140%",height:"140%"},defs);
+  el("feDropShadow",{dx:"0",dy:"1",stdDeviation:"2",floodOpacity:"0.12"},filter);
+
+  // Background
+  el("rect",{x:PAD.left,y:PAD.top,width:PW,height:PH,fill:"#fff"},svg);
+
+  // Grid
+  for(let i=0;i<=MAX;i+=20){
+    el("line",{x1:PAD.left,x2:W-PAD.right,y1:ty(i),y2:ty(i),stroke:i===0?COL.axis:COL.grid,strokeWidth:i===0?1.2:0.6},svg);
+    el("line",{x1:tx(i),x2:tx(i),y1:PAD.top,y2:H-PAD.bottom,stroke:i===0?COL.axis:COL.grid,strokeWidth:i===0?1.2:0.6},svg);
+  }
+
+  // Axes
+  el("line",{x1:PAD.left,x2:PAD.left,y1:PAD.top,y2:H-PAD.bottom,stroke:COL.axis,strokeWidth:1.2},svg);
+  el("line",{x1:PAD.left,x2:W-PAD.right,y1:H-PAD.bottom,y2:H-PAD.bottom,stroke:COL.axis,strokeWidth:1.2},svg);
+  el("text",{x:PAD.left-10,y:PAD.top-12,textAnchor:"end",fill:COL.txt,fontSize:14,fontWeight:700,fontFamily:"sans-serif",text:"Price"},svg);
+  el("text",{x:W-PAD.right,y:H-PAD.bottom+38,textAnchor:"end",fill:COL.txt,fontSize:14,fontWeight:700,fontFamily:"sans-serif",text:"Quantity"},svg);
+  for(const v of [20,40,60,80,100]){
+    el("text",{x:tx(v),y:H-PAD.bottom+18,textAnchor:"middle",fill:COL.tick,fontSize:12,fontFamily:"sans-serif",text:v},svg);
+    el("text",{x:PAD.left-10,y:ty(v)+4,textAnchor:"end",fill:COL.tick,fontSize:12,fontFamily:"sans-serif",text:v},svg);
+  }
+
+  // Shaded regions
+  if(toggles.cs&&m.Qm>0) el("polygon",{points:polyStr(m.csPoly),fill:COL.cs,stroke:COL.csBord,strokeWidth:0.8},svg);
+  if(toggles.ps&&m.Qm>0) el("polygon",{points:polyStr(m.psPoly),fill:COL.ps,stroke:COL.psBord,strokeWidth:0.8},svg);
+  if(toggles.dwl&&m.Qc>m.Qm) el("polygon",{points:polyStr(m.dwlPoly),fill:COL.dwl,stroke:COL.dwlBord,strokeWidth:0.8},svg);
+  if(toggles.profit&&m.Qm>0&&(m.isLoss?m.ATCm<=MAX:m.ATCm<m.Pm)){
+    el("polygon",{points:polyStr(m.profitPoly),fill:m.isLoss?COL.loss:COL.profit,stroke:m.isLoss?COL.lossBord:COL.profitBord,strokeWidth:0.8},svg);
+  }
+
+  // Region labels centered
+  if(toggles.cs&&m.Qm>6) el("text",{x:tx(m.csCx),y:ty(m.csCy)+4,fill:COL.csText,fontSize:12,fontWeight:700,textAnchor:"middle",opacity:0.6,text:"CS"},svg);
+  if(toggles.ps&&m.Qm>6) el("text",{x:tx(m.psCentQ),y:ty(m.psCentP)+4,fill:COL.mc,fontSize:12,fontWeight:700,textAnchor:"middle",opacity:0.55,text:"PS"},svg);
+  if(toggles.dwl&&m.Qc>m.Qm+6) el("text",{x:tx(m.dwlCentQ),y:ty(m.dwlCentP)+4,fill:COL.dwlText,fontSize:12,fontWeight:700,textAnchor:"middle",opacity:0.55,text:"DWL"},svg);
+  if(toggles.profit&&m.Qm>6&&m.ATCm<MAX&&Math.abs(m.Pm-m.ATCm)>4){
+    el("text",{x:tx(m.Qm*0.5),y:ty((m.Pm+m.ATCm)/2)+4,fill:m.isLoss?COL.lossRed:COL.mc,fontSize:11,fontWeight:700,textAnchor:"middle",opacity:0.55,text:m.isLoss?"LOSS":"PROFIT"},svg);
+  }
+
+  // Curves
+  el("path",{d:pathD(m.dem),fill:"none",stroke:COL.demand,strokeWidth:2.8,strokeLinecap:"round",strokeLinejoin:"round"},svg);
+  el("path",{d:pathD(m.mr),fill:"none",stroke:COL.mr,strokeWidth:2.2,strokeLinecap:"round",strokeLinejoin:"round"},svg);
+  el("path",{d:pathD(m.mc),fill:"none",stroke:COL.mc,strokeWidth:2.8,strokeLinecap:"round",strokeLinejoin:"round"},svg);
+  if(toggles.atc&&m.atc.length>2) el("path",{d:pathD(m.atc),fill:"none",stroke:COL.atc,strokeWidth:2.2,strokeLinecap:"round",strokeLinejoin:"round"},svg);
+
+  // Invisible drag hit areas
+  const demHit = el("path",{d:pathD(m.dem),fill:"none",stroke:"transparent",strokeWidth:22,style:"cursor:grab"},svg);
+  demHit.addEventListener("mousedown",e=>{e.preventDefault();dragging="demand";selectedPt=null;render();});
+  demHit.addEventListener("touchstart",e=>{e.preventDefault();dragging="demand";selectedPt=null;render();},{passive:false});
+
+  const mcHit = el("path",{d:pathD(m.mc),fill:"none",stroke:"transparent",strokeWidth:22,style:"cursor:grab"},svg);
+  mcHit.addEventListener("mousedown",e=>{e.preventDefault();dragging="mc";selectedPt=null;render();});
+  mcHit.addEventListener("touchstart",e=>{e.preventDefault();dragging="mc";selectedPt=null;render();},{passive:false});
+
+  // Curve end labels
+  if(m.dem.length>1){ const l=m.dem[m.dem.length-1]; el("text",{x:tx(l[0])+4,y:ty(l[1])-8,fill:COL.demand,fontSize:14,fontWeight:700,fontFamily:"sans-serif",text:"D"},svg); }
+  if(m.mr.length>1){ const l=m.mr[m.mr.length-1]; el("text",{x:tx(l[0])+4,y:ty(Math.max(l[1],1))+18,fill:COL.mr,fontSize:14,fontWeight:700,fontFamily:"sans-serif",text:"MR"},svg); }
+  if(m.mc.length>1){ const l=m.mc[m.mc.length-1]; el("text",{x:tx(l[0])+4,y:ty(l[1])-8,fill:COL.mc,fontSize:14,fontWeight:700,fontFamily:"sans-serif",text:"MC"},svg); }
+  if(toggles.atc&&m.atc.length>2){ const l=m.atc[m.atc.length-1]; el("text",{x:tx(l[0])+4,y:ty(l[1])-8,fill:COL.atc,fontSize:14,fontWeight:700,fontFamily:"sans-serif",text:"ATC"},svg); }
+
+  // Dashed guides — all black/gray
+  if(m.Qm>0){
+    el("line",{x1:PAD.left,x2:tx(m.Qm),y1:ty(m.Pm),y2:ty(m.Pm),stroke:COL.guide,strokeWidth:1,strokeDasharray:"5,4"},svg);
+    el("line",{x1:tx(m.Qm),x2:tx(m.Qm),y1:ty(m.Pm),y2:H-PAD.bottom,stroke:COL.guide,strokeWidth:1,strokeDasharray:"5,4"},svg);
+    el("text",{x:PAD.left-10,y:ty(m.Pm)+4,textAnchor:"end",fill:COL.txt,fontSize:12,fontWeight:700,fontFamily:"sans-serif",text:"Pm"},svg);
+    el("text",{x:tx(m.Qm),y:H-PAD.bottom+18,textAnchor:"middle",fill:COL.txt,fontSize:12,fontWeight:700,fontFamily:"sans-serif",text:"Qm"},svg);
+  }
+  if(toggles.comp&&m.Qc>0){
+    el("line",{x1:PAD.left,x2:tx(m.Qc),y1:ty(m.Pc),y2:ty(m.Pc),stroke:COL.guide,strokeWidth:1,strokeDasharray:"5,4"},svg);
+    el("line",{x1:tx(m.Qc),x2:tx(m.Qc),y1:ty(m.Pc),y2:H-PAD.bottom,stroke:COL.guide,strokeWidth:1,strokeDasharray:"5,4"},svg);
+    el("text",{x:PAD.left-10,y:ty(m.Pc)+4,textAnchor:"end",fill:COL.txt,fontSize:12,fontWeight:700,fontFamily:"sans-serif",text:"Pc"},svg);
+    el("text",{x:tx(m.Qc),y:H-PAD.bottom+18,textAnchor:"middle",fill:COL.txt,fontSize:12,fontWeight:700,fontFamily:"sans-serif",text:"Qc"},svg);
+  }
+
+  // Intersection dots
+  function addDot(q,p,id){
+    const hitArea = el("circle",{cx:tx(q),cy:ty(p),r:16,fill:"transparent",style:"cursor:pointer"},svg);
+    el("circle",{cx:tx(q),cy:ty(p),r:5.5,fill:COL.txt,stroke:"#fff",strokeWidth:2},svg);
+    hitArea.addEventListener("click",e=>{e.stopPropagation();selectedPt=selectedPt===id?null:id;render();});
+  }
+  if(m.Qm>0){ addDot(m.Qm,m.Pm,"monopoly"); addDot(m.Qm,m.MCm,"mrmc"); }
+  if(toggles.comp&&m.Qc>0) addDot(m.Qc,m.Pc,"comp");
+
+  // Coordinate tooltips
+  function tooltip(q,p){
+    const x=tx(q),y=ty(p),bw=82,bh=28,bx=x-bw/2,by=y-38;
+    el("rect",{x:bx,y:by,width:bw,height:bh,rx:6,fill:"#fff",stroke:"#ddd",strokeWidth:1,filter:"url(#shadow)"},svg);
+    el("text",{x:x,y:by+18,textAnchor:"middle",fill:"#333",fontSize:13,fontWeight:600,fontFamily:"sans-serif",text:`(${q.toFixed(1)}, ${p.toFixed(1)})`},svg);
+  }
+  if(selectedPt==="monopoly"&&m.Qm>0) tooltip(m.Qm,m.Pm);
+  if(selectedPt==="mrmc"&&m.Qm>0) tooltip(m.Qm,m.MCm);
+  if(selectedPt==="comp"&&m.Qc>0) tooltip(m.Qc,m.Pc);
+
+  // Update stats
+  const profitCol = m.isLoss ? COL.lossRed : COL.mc;
+  document.getElementById("stats").innerHTML = [
+    ["Pm", m.Pm.toFixed(0), COL.txt],
+    ["Qm", m.Qm.toFixed(0), COL.txt],
+    ["Profit", m.profit.toFixed(0), profitCol],
+    ["CS", m.csArea.toFixed(0), COL.csText],
+    ["PS", m.psArea.toFixed(0), COL.mc],
+    ["DWL", m.dwlArea.toFixed(0), COL.dwlText],
+  ].map(([l,v,c])=>`<div class="stat"><div class="stat-label">${l}</div><div class="stat-val" style="color:${c}">${v}</div></div>`).join("");
+}
+
+// Pointer handling for dragging
+function getSVGCoords(e){
+  const rect = svg.getBoundingClientRect();
+  const cx = e.touches ? e.touches[0].clientX : e.clientX;
+  const cy = e.touches ? e.touches[0].clientY : e.clientY;
+  return { q: fromX((cx-rect.left)*(W/rect.width)), p: fromY((cy-rect.top)*(H/rect.height)) };
+}
+svg.addEventListener("mousemove",e=>{
+  if(!dragging) return;
+  e.preventDefault();
+  const {q,p} = getSVGCoords(e);
+  if(dragging==="demand") state.a = clamp(Math.round(p+state.b*q),50,100);
+  else if(dragging==="mc") state.c = clamp(Math.round(p-state.d*q),0,40);
+  updateSliderValues();
+  render();
+});
+svg.addEventListener("touchmove",e=>{
+  if(!dragging) return;
+  e.preventDefault();
+  const {q,p} = getSVGCoords(e);
+  if(dragging==="demand") state.a = clamp(Math.round(p+state.b*q),50,100);
+  else if(dragging==="mc") state.c = clamp(Math.round(p-state.d*q),0,40);
+  updateSliderValues();
+  render();
+},{passive:false});
+function stopDrag(){ dragging=null; svg.style.cursor="default"; }
+svg.addEventListener("mouseup",stopDrag);
+svg.addEventListener("mouseleave",stopDrag);
+svg.addEventListener("touchend",stopDrag);
+svg.addEventListener("click",()=>{ if(!dragging){selectedPt=null;render();} });
+
+// Build sliders
+const sliderDefs = [
+  { key:"a", label:"Demand Intercept", min:50, max:100, step:1, color:COL.demand },
+  { key:"b", label:"Demand Slope", min:0.3, max:1.5, step:0.1, color:COL.demand },
+  { key:"c", label:"MC Base", min:0, max:40, step:1, color:COL.mc },
+  { key:"d", label:"MC Slope", min:0.1, max:1.2, step:0.1, color:COL.mc },
+  { key:"fc", label:"Fixed Cost", min:0, max:1500, step:25, color:COL.atc },
+];
+const slidersDiv = document.getElementById("sliders");
+sliderDefs.forEach(({key,label,min,max,step,color},i)=>{
+  if(i===2||i===4) { const sp=document.createElement("div"); sp.style.height="6px"; slidersDiv.appendChild(sp); }
+  const row = document.createElement("div"); row.className="slider-row";
+  row.innerHTML = `
+    <div class="slider-header">
+      <span class="slider-label">${label}</span>
+      <span class="slider-val" id="sv-${key}" style="color:${color}">${state[key]}</span>
+    </div>
+    <input type="range" id="sl-${key}" min="${min}" max="${max}" step="${step}" value="${state[key]}" style="accent-color:${color}">
+  `;
+  slidersDiv.appendChild(row);
+  row.querySelector("input").addEventListener("input",e=>{
+    state[key] = Number(e.target.value);
+    document.getElementById(`sv-${key}`).textContent = state[key];
+    render();
+  });
+});
+
+function updateSliderValues(){
+  sliderDefs.forEach(({key})=>{
+    document.getElementById(`sl-${key}`).value = state[key];
+    document.getElementById(`sv-${key}`).textContent = state[key];
+  });
+}
+
+// Build pills
+const pillDefs = [
+  { key:"cs", label:"Consumer Surplus", color:COL.csText },
+  { key:"ps", label:"Producer Surplus", color:COL.mc },
+  { key:"dwl", label:"Deadweight Loss", color:COL.dwlText },
+  { key:"profit", label:"Profit", color:COL.mc },
+  { key:"atc", label:"ATC", color:COL.atc },
+  { key:"comp", label:"Competitive", color:COL.comp },
+];
+const pillsDiv = document.getElementById("pills");
+pillDefs.forEach(({key,label,color})=>{
+  const btn = document.createElement("button");
+  btn.className = `pill ${toggles[key]?"on":"off"}`;
+  btn.textContent = label;
+  btn.style.background = toggles[key] ? color : "#eee";
+  btn.style.color = toggles[key] ? "#fff" : "#aaa";
+  btn.addEventListener("click",()=>{
+    toggles[key] = !toggles[key];
+    btn.className = `pill ${toggles[key]?"on":"off"}`;
+    btn.style.background = toggles[key] ? color : "#eee";
+    btn.style.color = toggles[key] ? "#fff" : "#aaa";
+    render();
+  });
+  pillsDiv.appendChild(btn);
+});
+
+// Initial render
+render();
+</script>
+</body>
+</html>
