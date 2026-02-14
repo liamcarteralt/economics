@@ -629,12 +629,12 @@ function draw() {
   if (toggles.comp && eq.qComp > 0 && eq.qComp <= FIXED_MAX_Q && eq.pComp >= 0 && eq.pComp <= FIXED_MAX_P) {
     drawDash(qToX(eq.qComp), pToY(eq.pComp), qToX(eq.qComp), H - MARGIN.bottom);
     drawDash(MARGIN.left, pToY(eq.pComp), qToX(eq.qComp), pToY(eq.pComp));
-    drawDot(eq.qComp, eq.pComp, 5, '#555');
+    drawDot(eq.qComp, eq.pComp, 5, '#000');
 
     // Pc / Qc axis labels
     ctx.save();
     ctx.font = `600 ${12 * dpr}px 'IBM Plex Sans', sans-serif`;
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = '#000';
     ctx.textAlign = 'right'; ctx.textBaseline = 'top';
     ctx.fillText('Pc', (MARGIN.left - 8) * dpr, (pToY(eq.pComp) - 16) * dpr);
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
