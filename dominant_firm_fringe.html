@@ -417,7 +417,7 @@ function drawCurve(ctx,fn,qX,pY,color,w,dash,label,mq){
   ctx.restore();
 }
 
-/* Kinked residual demand with label "Dd(p)" on upper segment */
+/* Kinked residual demand with label "Dr" on upper segment */
 function drawKinked(ctx,model,qX,pY,color,w){
   const Qk=model.kinkQ();const{A,B}=model.upperSeg();
   ctx.save();ctx.strokeStyle=color;ctx.lineWidth=w*dpr;
@@ -447,9 +447,9 @@ function drawKinked(ctx,model,qX,pY,color,w){
   const kP=model.residualDemandP(Qk);
   if(Qk>0&&Qk<MAX_Q&&kP>0&&kP<MAX_P){ctx.beginPath();ctx.arc(qX(Qk)*dpr,pY(kP)*dpr,3.5*dpr,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();}
 
-  // Label "Dd(p)" on upper segment
+  // Label "Dr" on upper segment
   const lq=Math.min(Qk*0.55,MAX_Q-10);const lp=A-B*lq;
-  if(lp>5&&lp<MAX_P-5){ctx.font=`700 ${13*dpr}px 'IBM Plex Sans',sans-serif`;ctx.fillStyle=color;ctx.textAlign='left';ctx.textBaseline='bottom';ctx.fillText('Dd(p)',qX(lq)*dpr+6*dpr,pY(lp)*dpr-4*dpr);}
+  if(lp>5&&lp<MAX_P-5){ctx.font=`700 ${13*dpr}px 'IBM Plex Sans',sans-serif`;ctx.fillStyle=color;ctx.textAlign='left';ctx.textBaseline='bottom';ctx.fillText('Dr',qX(lq)*dpr+6*dpr,pY(lp)*dpr-4*dpr);}
 
   ctx.restore();
 }
@@ -457,14 +457,44 @@ function drawKinked(ctx,model,qX,pY,color,w){
 function drawMRGap(ctx,model,qX,pY,color,w){
   const Qk=model.kinkQ();const{A,B}=model.upperSeg();
   ctx.save();ctx.strokeStyle=color;ctx.lineWidth=w*dpr;
-  let pts=[];for(let i=0;i<=200;i++){const q=(i/200)*Qk;const p=A-2*B*q;if(p<0)break;if(p<=MAX_P)pts.push({q,p});}
-  if(pts.length>1){ctx.beginPath();ctx.moveTo(qX(pts[0].q)*dpr,pY(pts[0].p)*dpr);for(let i=1;i<pts.length;i++)ctx.lineTo(qX(pts[i].q)*dpr,pY(pts[i].p)*dpr);ctx.stroke();}
-  pts=[];for(let i=0;i<=200;i++){const q=Qk+(i/200)*(MAX_Q-Qk);const p=model.a-2*model.b*q;if(p<0)break;if(p<=MAX_P)pts.push({q,p});}
-  if(pts.length>1){ctx.beginPath();ctx.moveTo(qX(pts[0].q)*dpr,pY(pts[0].p)*dpr);for(let i=1;i<pts.length;i++)ctx.lineTo(qX(pts[i].q)*dpr,pY(pts[i].p)*dpr);ctx.stroke();}
-  const mrT=A-2*B*Qk,mrB=model.a-2*model.b*Qk;
-  if(Qk>0&&Qk<MAX_Q&&mrT>mrB){ctx.setLineDash([4*dpr,4*dpr]);ctx.lineWidth=1.5*dpr;ctx.beginPath();ctx.moveTo(qX(Qk)*dpr,pY(Math.min(mrT,MAX_P))*dpr);ctx.lineTo(qX(Qk)*dpr,pY(Math.max(mrB,0))*dpr);ctx.stroke();}
-  const lq=Math.min(Qk*0.4,MAX_Q*0.3);const lp=A-2*B*lq;
-  if(lp>5&&lp<MAX_P){ctx.setLineDash([]);ctx.font=`700 ${13*dpr}px 'IBM Plex Sans',sans-serif`;ctx.fillStyle=color;ctx.textAlign='left';ctx.textBaseline='bottom';ctx.fillText('MRd',qX(lq)*dpr+5*dpr,pY(lp)*dpr-3*dpr);}
+
+  // Upper MR segment
+  let upperPts=[];for(let i=0;i<=200;i++){const q=(i/200)*Qk;const p=A-2*B*q;if(p<0)break;if(p<=MAX_P)upperPts.push({q,p});}
+  if(upperPts.length>1){ctx.beginPath();ctx.moveTo(qX(upperPts[0].q)*dpr,pY(upperPts[0].p)*dpr);for(let i=1;i<upperPts.length;i++)ctx.lineTo(qX(upperPts[i].q)*dpr,pY(upperPts[i].p)*dpr);ctx.stroke();}
+
+  // Lower MR segment — only draw if mrB > 0 (visible above axis)
+  const mrT=A-2*B*Qk;
+  const mrB=model.a-2*model.b*Qk;
+  let lowerPts=[];
+  if(mrB>0.5){
+    for(let i=0;i<=200;i++){const q=Qk+(i/200)*(MAX_Q-Qk);const p=model.a-2*model.b*q;if(p<0)break;if(p<=MAX_P)lowerPts.push({q,p});}
+    if(lowerPts.length>1){ctx.beginPath();ctx.moveTo(qX(lowerPts[0].q)*dpr,pY(lowerPts[0].p)*dpr);for(let i=1;i<lowerPts.length;i++)ctx.lineTo(qX(lowerPts[i].q)*dpr,pY(lowerPts[i].p)*dpr);ctx.stroke();}
+  }
+
+  // Vertical dashed gap — only when both segments are visible
+  if(Qk>0&&Qk<MAX_Q&&mrT>mrB&&mrB>0.5){
+    const gapTop=Math.min(mrT,MAX_P);
+    const gapBot=mrB;
+    ctx.setLineDash([4*dpr,4*dpr]);ctx.lineWidth=1.5*dpr;
+    ctx.beginPath();ctx.moveTo(qX(Qk)*dpr,pY(gapTop)*dpr);ctx.lineTo(qX(Qk)*dpr,pY(gapBot)*dpr);ctx.stroke();
+  }
+
+  // MRd label — at end of last visible solid part
+  ctx.setLineDash([]);ctx.font=`700 ${13*dpr}px 'IBM Plex Sans',sans-serif`;ctx.fillStyle=color;
+  let labelQ,labelP;
+  if(lowerPts.length>1){
+    const last=lowerPts[lowerPts.length-1];labelQ=last.q;labelP=last.p;
+  } else if(upperPts.length>1){
+    // No visible lower segment — label at end of upper solid curve
+    const last=upperPts[upperPts.length-1];labelQ=last.q;labelP=last.p;
+  }
+  if(labelQ!=null){
+    let lx=qX(labelQ)*dpr+5*dpr,ly=pY(labelP)*dpr;
+    ctx.textAlign='left';ctx.textBaseline='middle';
+    if(labelP<=5)ly-=14*dpr;
+    ctx.fillText('MRd',lx,ly);
+  }
+
   ctx.restore();
 }
 
@@ -581,7 +611,7 @@ function draw(){
   // D(p) dotted red — only above kink, NO label (label is on lower segment via drawKinked)
   if(Qk>0)drawCurve(xR,demFn,qXR,pYR,'#c62828',2,[6,5],null,Qk);
 
-  // Kinked residual demand (labels Dd(p) on upper, D(p)=Dr on lower end)
+  // Kinked residual demand (labels Dr on upper, D(p)=Dr on lower end)
   drawKinked(xR,model,qXR,pYR,'#c62828',2.8);
   drawMRGap(xR,model,qXR,pYR,'#e65100',2.2);
   drawCurve(xR,mcDom,qXR,pYR,'#2e7d32',2.8,null,'MCd');
